@@ -168,8 +168,7 @@ class BertConfig(object):
 
   def to_dict(self):
     """Serializes this instance to a Python dictionary."""
-    output = copy.deepcopy(self.__dict__)
-    return output
+    return copy.deepcopy(self.__dict__)
 
   def to_json_string(self):
     """Serializes this instance to a JSON string."""
@@ -266,8 +265,7 @@ class BertModel(object):
           with tf.variable_scope("block_%d" % block_num):
             for layer_idx, layer_type in enumerate(self.config.block_layers):
               layer_name = layer_type
-              count = self.config.block_layers[:layer_idx].count(layer_type)
-              if count:
+              if count := self.config.block_layers[:layer_idx].count(layer_type):
                 layer_name += "_%d" % count
               with tf.variable_scope(layer_name):
                 x = prev_layer_output
@@ -280,7 +278,7 @@ class BertModel(object):
                 elif layer_type == "moe":
                   x = self.moe(x, layout, mesh_shape, input_mask, is_training)
                 else:
-                  raise ValueError("unknown layer type " + layer_type)
+                  raise ValueError(f"unknown layer type {layer_type}")
                 x = mtf.dropout(
                     x, is_training,
                     keep_prob=1.0 - self.config.layer_output_dropout_prob)
@@ -607,12 +605,12 @@ class BertModel(object):
     """Dimensionality of attention queries/keys/values."""
     if self.config.attention_head_size:
       attention_head_size = self.config.attention_head_size
-    else:
-      if self.model_dim.size % self.num_heads_dim.size != 0:
-        raise ValueError(
-            "The hidden size (%d) is not a multiple of the number of attention "
-            "heads (%d)" % (self.model_dim.size, self.num_heads_dim.size))
+    elif self.model_dim.size % self.num_heads_dim.size == 0:
       attention_head_size = int(self.model_dim.size / self.num_heads_dim.size)
+    else:
+      raise ValueError(
+          "The hidden size (%d) is not a multiple of the number of attention "
+          "heads (%d)" % (self.model_dim.size, self.num_heads_dim.size))
     return mtf.Dimension("attention_head", attention_head_size)
 
   @property
@@ -678,7 +676,7 @@ def get_activation(activation_string):
   elif act == "tanh":
     return mtf.tanh
   else:
-    raise ValueError("Unsupported activation: %s" % act)
+    raise ValueError(f"Unsupported activation: {act}")
 
 
 def get_assignment_map_from_checkpoint(tvars, init_checkpoint):
@@ -691,13 +689,13 @@ def get_assignment_map_from_checkpoint(tvars, init_checkpoint):
     name = var.name
     m = re.match("^(.*):\\d+$", name)
     if m is not None:
-      name = m.group(1)
+      name = m[1]
 
     if "global_step" in name or "adam_" in name or "slot_" in name:
       continue
     name_to_variable[name] = var
 
-  tf.logging.info("init_checkpoint:{} ".format(init_checkpoint))
+  tf.logging.info(f"init_checkpoint:{init_checkpoint} ")
   init_vars = tf.train.list_variables(init_checkpoint)
 
   assignment_map = collections.OrderedDict()
@@ -707,7 +705,7 @@ def get_assignment_map_from_checkpoint(tvars, init_checkpoint):
       continue
     assignment_map[name] = name
     initialized_variable_names[name] = 1
-    initialized_variable_names[name + ":0"] = 1
+    initialized_variable_names[f"{name}:0"] = 1
 
   return (assignment_map, initialized_variable_names)
 

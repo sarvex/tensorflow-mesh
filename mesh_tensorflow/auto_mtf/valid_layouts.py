@@ -148,7 +148,7 @@ class LayoutValidator(object):
     Returns:
       A {string: int} mapping mesh dimension names to their sizes.
     """
-    mesh_dimension_name_to_size = {}  # {string: int}
-    for mesh_dimension in mesh_shape.dims:
-      mesh_dimension_name_to_size[mesh_dimension.name] = mesh_dimension.size
-    return mesh_dimension_name_to_size
+    return {
+        mesh_dimension.name: mesh_dimension.size
+        for mesh_dimension in mesh_shape.dims
+    }

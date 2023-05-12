@@ -83,9 +83,7 @@ class ProductKeyValueMemory(transformer.TransformerLayer):
     scores, indices = self.get_indices(keys, query)  # [b, l, h, k]
     scores = mtf.softmax(scores, reduced_dim=scores.shape.dims[-1])
     top_values = mtf.gather(values, indices, n_value_dim)  # [b, l, h, k, v]
-    out_values = mtf.einsum([top_values, scores],
-                            reduced_dims=scores.shape.dims[-2:])  # [b, l, v]
-    return out_values
+    return mtf.einsum([top_values, scores], reduced_dims=scores.shape.dims[-2:])
 
   def get_indices(self, keys: mtf.Tensor,
                   query: mtf.Tensor) -> Tuple[mtf.Tensor, mtf.Tensor]:

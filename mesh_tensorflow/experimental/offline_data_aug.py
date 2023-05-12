@@ -89,9 +89,11 @@ def _dataset_creator():
 def save_to_tfrecord(image, label, process_no, idx,
                      output_path, output_file_prefix):
   """Save to TFRecord."""
-  d_feature = {}
-  d_feature['image/ct_image'] = tf.train.Feature(
-      bytes_list=tf.train.BytesList(value=[image.reshape([-1]).tobytes()]))
+  d_feature = {
+      'image/ct_image':
+      tf.train.Feature(bytes_list=tf.train.BytesList(
+          value=[image.reshape([-1]).tobytes()]))
+  }
   d_feature['image/label'] = tf.train.Feature(
       bytes_list=tf.train.BytesList(value=[label.reshape([-1]).tobytes()]))
 
@@ -99,8 +101,7 @@ def save_to_tfrecord(image, label, process_no, idx,
   serialized = example.SerializeToString()
 
   result_file = os.path.join(
-      output_path,
-      '{}-{}-{}.tfrecords'.format(output_file_prefix, process_no, idx))
+      output_path, f'{output_file_prefix}-{process_no}-{idx}.tfrecords')
   options = tf.python_io.TFRecordOptions(
       tf.python_io.TFRecordCompressionType.GZIP)
   with tf.python_io.TFRecordWriter(result_file, options=options) as w:

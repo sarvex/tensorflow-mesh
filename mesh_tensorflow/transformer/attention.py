@@ -84,15 +84,15 @@ def attention(q,
 
   # Adds auxiliary z-loss to push the attention logits towards zero.
   if z_loss_coeff is not None and context.train:
-    tf.logging.info("attention z_loss being added: {}".format(
-        tf.get_variable_scope().name))
+    tf.logging.info(
+        f"attention z_loss being added: {tf.get_variable_scope().name}")
     log_z = mtf.reduce_logsumexp(logits, memory_length_dim)
     z_loss = mtf.square(log_z) * mtf.cast(context.nonpadding, log_z.dtype)
     z_loss = mtf.reduce_mean(z_loss)
     if context.num_microbatches and context.num_microbatches > 1:
       tf.logging.info(
-          "Dividing attention z-loss loss by num_microbatches={}".format(
-              context.num_microbatches))
+          f"Dividing attention z-loss loss by num_microbatches={context.num_microbatches}"
+      )
       z_loss /= context.num_microbatches
     if context.train:
       mtf.scalar_summary("attention_z_loss", z_loss)
@@ -175,8 +175,7 @@ def hybrid_attention(q,
       weights, context.train, 1.0 - dropout_rate,
       noise_shape=weights.shape - dropout_broadcast_dims)
   outputs_shape = q.shape - key_dim + value_dim
-  outputs = mtf.einsum([weights, v], outputs_shape)
-  return outputs
+  return mtf.einsum([weights, v], outputs_shape)
 
 
 def synthetic_attention(q,
@@ -284,13 +283,10 @@ def synthetic_attention(q,
                                 variable_dtype=None)
       logits = mtf.slice(logits, 0, memory_length_dim.size,
                          memory_length_dim.name)
-      if context.mode == "incremental":
-        pass
-      else:
+      if context.mode != "incremental":
         length_dim = q.shape.get_dim_by_name("length")
         logits = mtf.slice(logits, 0, length_dim.size, "length")
-    elif synthesize_mode == "random_plus_alpha" or \
-        synthesize_mode == "random_plus":
+    elif synthesize_mode in ["random_plus_alpha", "random_plus"]:
       # Mixture Random Synthesizer with learnable Alpha
       tf.logging.info("Using Random Plus Alpha")
       logits = mtf.einsum([q, k], reduced_dims=[key_dim])
@@ -317,8 +313,7 @@ def synthetic_attention(q,
         logits = ((1-alpha) * logits) + (alpha * r)
       else:
         logits = logits + r
-    elif synthesize_mode == "dense_plus_alpha" or \
-        synthesize_mode == "dense_plus":
+    elif synthesize_mode in ["dense_plus_alpha", "dense_plus"]:
       # Mixture Dense Synthesizer with learnable alpha
       tf.logging.info("Using Dense Plus Alpha Scaling")
       logits = mtf.einsum([q, k], reduced_dims=[key_dim])
@@ -329,9 +324,7 @@ def synthetic_attention(q,
                            reduced_dims=[key_dim],
                            variable_dtype=None)
       r = mtf.slice(r, 0, memory_length_dim.size, memory_length_dim.name)
-      if context.mode == "incremental":
-        pass
-      else:
+      if context.mode != "incremental":
         length_dim = q.shape.get_dim_by_name("length")
         r = mtf.slice(r, 0, length_dim.size, "length")
       if "alpha" in synthesize_mode:
@@ -360,8 +353,7 @@ def synthetic_attention(q,
   else:
     outputs_shape = q.shape - [key_dim] + value_dim
 
-  outputs = mtf.einsum([weights, v], outputs_shape)
-  return outputs
+  return mtf.einsum([weights, v], outputs_shape)
 
 
 class AttentionParams(object):
@@ -680,8 +672,7 @@ class ExpertsAttentionParams(AttentionParams):
                 stddev=self.query_input_dim.size ** -0.5),
             dtype=self.variable_dtype)
     else:
-      raise ValueError("Invalid expert computation mode: {}".format(
-          expert_computation))
+      raise ValueError(f"Invalid expert computation mode: {expert_computation}")
 
     # ExpertsAttention, for simplicitly, asserts that combine_dims is True, and
     # for efficiency, that shared_kv is True.
@@ -696,9 +687,9 @@ class ExpertsAttentionParams(AttentionParams):
     # we want to partition both "experts_hidden" and "heads".
     moe_output_dims = mtf.Dimension("d_model", self.q_shape[-1].size)
 
-    tf.logging.info("ExpertsAttention moe_hidden_size: {}".format(
-        experts_hparams.hidden_size))
-    tf.logging.info("moe_output_dims: {}".format(moe_output_dims))
+    tf.logging.info(
+        f"ExpertsAttention moe_hidden_size: {experts_hparams.hidden_size}")
+    tf.logging.info(f"moe_output_dims: {moe_output_dims}")
     self.moe_layer = mtf.transformer.moe.MoE1D(
         moe_gating=experts_hparams.moe_gating,
         num_experts=experts_hparams.num_experts,
@@ -862,18 +853,17 @@ def local_attention_1d(q,
   def _reshape_query(x):
     return mtf.replace_dimensions(
         x, length_dim, [num_blocks, query_block_length])
+
   def _reshape_memory(x):
     x = mtf.replace_dimensions(
         x, length_dim, [num_blocks, memory_block_length])
     return (mtf.left_halo_exchange if fully_autoregressive
             else mtf.halo_exchange)(
                 x, num_blocks, memory_block_length, radius)
+
   q = _reshape_query(q)
   k = _reshape_memory(k)
-  if v:
-    v = _reshape_memory(v)
-  else:
-    v = k
+  v = _reshape_memory(v) if v else k
   if sequence_id is None:
     sequence_id = 1
   if (not isinstance(sequence_id, mtf.Tensor) or

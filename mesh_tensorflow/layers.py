@@ -36,11 +36,12 @@ def summary_for_clip_activation_gradient(t, name=None, batch_dims=None):
   if batch_dims:
     rms_batch = mtf.sqrt(
         mtf.reduce_mean(mtf.square(t), output_shape=batch_dims))
-    mtf.scalar_summary("rms_mean/%s" % name, mtf.reduce_mean(rms_batch))
-    mtf.scalar_summary("rms_max/%s" % name, mtf.reduce_max(rms_batch))
+    mtf.scalar_summary(f"rms_mean/{name}", mtf.reduce_mean(rms_batch))
+    mtf.scalar_summary(f"rms_max/{name}", mtf.reduce_max(rms_batch))
     mtf.scalar_summary(
-        "rms_var/%s" % name,
-        mtf.reduce_mean(mtf.square(rms_batch - mtf.reduce_mean(rms_batch))))
+        f"rms_var/{name}",
+        mtf.reduce_mean(mtf.square(rms_batch - mtf.reduce_mean(rms_batch))),
+    )
 
 
 @gin.configurable
@@ -120,7 +121,7 @@ def us_einsum(xs, *args, **kwargs):
   """
   y = mtf.einsum(xs, *args, **kwargs)
   if unit_scaling_convention():
-    all_input_dims = set(sum([x.shape.dims for x in xs], []))
+    all_input_dims = set(sum((x.shape.dims for x in xs), []))
     reduced_dims = [d for d in all_input_dims if d not in y.shape.dims]
     y *= mtf.Shape(reduced_dims).size ** -0.5
   return y
@@ -182,7 +183,7 @@ def dense(x,
   for i in range(len(reduced_dims)):
     if reduced_dims[i] in new_dims:
       original_name = reduced_dims[i].name
-      tmp_name = "_" + original_name
+      tmp_name = f"_{original_name}"
       reduced_dims[i] = mtf.Dimension(tmp_name, reduced_dims[i].size)
       x = mtf.rename_dimension(x, original_name, tmp_name)
   output_shape = mtf.Shape([d for d in x.shape.dims if d not in reduced_dims] +
@@ -992,7 +993,7 @@ def layer_norm(x, dim, epsilon=1e-6, name="layer_prepostprocess"):
   Returns:
     a mtf.Tensor with same shape as x.
   """
-  with tf.variable_scope(name + "/layer_norm"):
+  with tf.variable_scope(f"{name}/layer_norm"):
     scale = mtf.get_variable(
         x.mesh,
         "layer_norm_scale",
@@ -1065,6 +1066,9 @@ def batch_norm(x, is_training, momentum, epsilon=1e-9,
         activation_dtype=x.dtype,
         trainable=False)
 
+    # Update running mean and running variance.
+    # TODO(lehou): do not return update_ops; handle them inside MTF.
+    bn_stats_update_ops = []
     # At training time, calculate mean and variance and normalize across batch
     # dim.
     if is_training:
@@ -1074,21 +1078,21 @@ def batch_norm(x, is_training, momentum, epsilon=1e-9,
 
       norm_x = (x - mean) * mtf.rsqrt(variance + epsilon)
 
-      # Update running mean and running variance.
-      # TODO(lehou): do not return update_ops; handle them inside MTF.
-      bn_stats_update_ops = []
-      bn_stats_update_ops.append(mtf.assign(
-          moving_mean, momentum * moving_mean + (1 - momentum) * mean,
-          name="{}/bn_mean_update".format(name)))
-      bn_stats_update_ops.append(mtf.assign(
-          moving_variance,
-          momentum * moving_variance + (1 - momentum) * variance,
-          name="{}/bn_var_update".format(name)))
+      bn_stats_update_ops.extend((
+          mtf.assign(
+              moving_mean,
+              momentum * moving_mean + (1 - momentum) * mean,
+              name=f"{name}/bn_mean_update",
+          ),
+          mtf.assign(
+              moving_variance,
+              momentum * moving_variance + (1 - momentum) * variance,
+              name=f"{name}/bn_var_update",
+          ),
+      ))
     else:
       # At eval and test time, use the running mean and variance.
       norm_x = (x - moving_mean) * mtf.rsqrt(moving_variance + epsilon)
-      bn_stats_update_ops = []
-
     return (norm_x * scale) + bias, bn_stats_update_ops
 
 
@@ -1216,20 +1220,19 @@ def dense_relu_dense(x,
 
 def local_1d_halo_exchange(k, v, num_w_blocks, w_dim, mask_right):
   """Halo exchange for keys and values for Local 1D attention."""
-  if num_w_blocks is not None:
-    if mask_right:
-      k = mtf.left_halo_exchange(k, num_w_blocks, w_dim, w_dim.size)
-      v = mtf.left_halo_exchange(v, num_w_blocks, w_dim, w_dim.size)
-    else:
-      k = mtf.halo_exchange(k, num_w_blocks, w_dim, w_dim.size)
-      v = mtf.halo_exchange(v, num_w_blocks, w_dim, w_dim.size)
-  else:
+  if num_w_blocks is None:
     if mask_right:
       k = mtf.pad(k, [w_dim, None], w_dim.name)
       v = mtf.pad(v, [w_dim, None], w_dim.name)
     else:
       k = mtf.pad(k, [w_dim, w_dim], w_dim.name)
       v = mtf.pad(v, [w_dim, w_dim], w_dim.name)
+  elif mask_right:
+    k = mtf.left_halo_exchange(k, num_w_blocks, w_dim, w_dim.size)
+    v = mtf.left_halo_exchange(v, num_w_blocks, w_dim, w_dim.size)
+  else:
+    k = mtf.halo_exchange(k, num_w_blocks, w_dim, w_dim.size)
+    v = mtf.halo_exchange(v, num_w_blocks, w_dim, w_dim.size)
   return k, v
 
 
@@ -1272,8 +1275,8 @@ def local_self_attention_spatial_blocks(
     ValueError: if channels or depth don't match.
   """
   with tf.variable_scope(
-      name, default_name="multihead_attention",
-      values=[query_antecedent]):
+        name, default_name="multihead_attention",
+        values=[query_antecedent]):
 
     w_dim, io_channels = query_antecedent.shape.dims[-2:]
     batch, num_w_blocks = query_antecedent.shape.dims[:2]
@@ -1282,8 +1285,8 @@ def local_self_attention_spatial_blocks(
         master_dtype, slice_dtype, query_antecedent.dtype)
 
     # Rename dimensions for the memory height and width.
-    memory_antecedent = mtf.rename_dimension(
-        query_antecedent, w_dim.name, "memory_" + w_dim.name)
+    memory_antecedent = mtf.rename_dimension(query_antecedent, w_dim.name,
+                                             f"memory_{w_dim.name}")
     memory_w_dim = memory_antecedent.shape.dims[-2]
 
     # Call einsum over the query and memory to get query q, keys k and values v.
@@ -1482,13 +1485,12 @@ def local_2d_halo_exchange(k, v, num_h_blocks, h_dim,
         else:
           k = mtf.halo_exchange(k, blocks_dim, block_size_dim, halo_size)
           v = mtf.halo_exchange(v, blocks_dim, block_size_dim, halo_size)
+      elif mask_right:
+        k = mtf.pad(k, [halo_size, None], block_size_dim.name)
+        v = mtf.pad(v, [halo_size, None], block_size_dim.name)
       else:
-        if mask_right:
-          k = mtf.pad(k, [halo_size, None], block_size_dim.name)
-          v = mtf.pad(v, [halo_size, None], block_size_dim.name)
-        else:
-          k = mtf.pad(k, [halo_size, halo_size], block_size_dim.name)
-          v = mtf.pad(v, [halo_size, halo_size], block_size_dim.name)
+        k = mtf.pad(k, [halo_size, halo_size], block_size_dim.name)
+        v = mtf.pad(v, [halo_size, halo_size], block_size_dim.name)
   return k, v
 
 
@@ -1532,7 +1534,7 @@ def local_2d_self_attention_spatial_blocks(query_antecedent,
     ValueError: if channels or depth don't match.
   """
   with tf.variable_scope(
-      name, default_name="multihead_attention", values=[query_antecedent]):
+        name, default_name="multihead_attention", values=[query_antecedent]):
 
     h_dim, w_dim, io_channels = query_antecedent.shape.dims[-3:]
     batch, num_h_blocks, num_w_blocks = query_antecedent.shape.dims[:3]
@@ -1542,9 +1544,9 @@ def local_2d_self_attention_spatial_blocks(query_antecedent,
 
     # Rename dimensions for the memory height and width.
     memory_antecedent = mtf.rename_dimension(query_antecedent, h_dim.name,
-                                             "memory_" + h_dim.name)
+                                             f"memory_{h_dim.name}")
     memory_antecedent = mtf.rename_dimension(memory_antecedent, w_dim.name,
-                                             "memory_" + w_dim.name)
+                                             f"memory_{w_dim.name}")
     memory_h_dim, memory_w_dim = memory_antecedent.shape.dims[-3:-1]
 
     # Call einsum over the query and memory to get query q, keys k and values v.
@@ -1681,8 +1683,7 @@ def dot_product_attention(q,
       noise_shape=weights.shape - dropout_broadcast_dims)
   depth_v = v.shape.dims[-1]
   outputs_shape = mtf.Shape(q.shape.dims[:-1] + [depth_v])
-  outputs = mtf.einsum([weights, v], outputs_shape)
-  return outputs
+  return mtf.einsum([weights, v], outputs_shape)
 
 
 def multihead_attention(query_antecedent,
@@ -1960,10 +1961,10 @@ def attention_bias_local_2d_block(mesh,
       mtf.range(mesh, memory_height, dtype=tf.int32),
       mtf.range(mesh, memory_width, dtype=dtype))
   width_mask = mtf.concat([mask_left_visible, mask_query], memory_width.name)
-  mask = mtf.cast(
+  return (mtf.cast(
       mtf.concat([mask_top_visible, width_mask], memory_height.name),
-      dtype=tf.float32) * -1e9
-  return mask
+      dtype=tf.float32,
+  ) * -1e9)
 
 
 def multiplicative_jitter(x, epsilon=1e-2):
@@ -2094,9 +2095,11 @@ def embedding_weights(mesh,
   shape = mtf.Shape(ensemble_dim) + [vocab_dim, output_dim]
   if initializer is None:
     initializer = tf.random_normal_initializer()
-  ret = mtf.get_variable(
-      mesh, name, shape, dtype=variable_dtype, initializer=initializer)
-  return ret
+  return mtf.get_variable(mesh,
+                          name,
+                          shape,
+                          dtype=variable_dtype,
+                          initializer=initializer)
 
 
 def embedding(indices, vocab_dim, output_dim, variable_dtype, name="embedding"):
@@ -2261,17 +2264,16 @@ def reversible_half_residual_and_swap(x1,
     y1: a Tensor
     y1_backwards: a Tensor
   """
-  if recompute_grads:
-    if x1_backwards is None:
-      x1_backwards = mtf.zeros_like(x1)
-    if x2_backwards is None:
-      x2_backwards = mtf.zeros_like(x2)
-    return mtf.custom_gradient(
-        functools.partial(_half_residual_and_swap, f=f),
-        _reversible_half_residual_grad,
-        [x1, x1_backwards, x2, x2_backwards])
-  else:
+  if not recompute_grads:
     return _half_residual_and_swap(x1, x1_backwards, x2, x2_backwards, f)
+  if x1_backwards is None:
+    x1_backwards = mtf.zeros_like(x1)
+  if x2_backwards is None:
+    x2_backwards = mtf.zeros_like(x2)
+  return mtf.custom_gradient(
+      functools.partial(_half_residual_and_swap, f=f),
+      _reversible_half_residual_grad,
+      [x1, x1_backwards, x2, x2_backwards])
 
 
 @gin.configurable

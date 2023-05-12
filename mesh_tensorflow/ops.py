@@ -58,13 +58,13 @@ def convert_to_dimension(d):
     return None
   if isinstance(d, Dimension):
     if not isinstance(d.name, str) or not isinstance(d.size, int):
-      raise ValueError("Bad dimension %s" % (d,))
+      raise ValueError(f"Bad dimension {d}")
     return d
   name, size = d
   if isinstance(name, str) and isinstance(size, int):
     return Dimension(name, size)
   else:
-    raise ValueError("could not convert %s to Dimension" % (d,))
+    raise ValueError(f"could not convert {d} to Dimension")
 
 
 class Shape(object):
@@ -89,7 +89,7 @@ class Shape(object):
     """
     self._dims = [convert_to_dimension(d) for d in tuple(dims)]
     if len(set(dims)) != len(dims):
-      raise ValueError("Shape must not have repeated dimensions %s" % dims)
+      raise ValueError(f"Shape must not have repeated dimensions {dims}")
 
   @property
   def dims(self):
@@ -170,8 +170,7 @@ class Shape(object):
   def rename_dimension(self, old_name, new_name):
     """Returns a copy where one dimension is renamed."""
     if old_name not in self.dimension_names:
-      raise ValueError("Shape %s does not have dimension named %s"
-                       % (self, old_name))
+      raise ValueError(f"Shape {self} does not have dimension named {old_name}")
     return Shape(
         [Dimension(new_name, d.size) if d.name == old_name else d
          for d in self.dims])
@@ -179,8 +178,7 @@ class Shape(object):
   def resize_dimension(self, name, new_size):
     """Returns a copy where one dimension has a different size."""
     if name not in self.dimension_names:
-      raise ValueError("Shape %s does not have dimension named %s"
-                       % (self, name))
+      raise ValueError(f"Shape {self} does not have dimension named {name}")
     return Shape(
         [Dimension(name, new_size) if d.name == name else d
          for d in self.dims])
@@ -199,8 +197,7 @@ class Shape(object):
     for d in self.dims:
       if d.name == name:
         return d
-    raise ValueError("Dimension {} not found in {}.".format(
-        name, self.to_string))
+    raise ValueError(f"Dimension {name} not found in {self.to_string}.")
 
 
 def convert_to_shape(x):
@@ -244,7 +241,7 @@ class LayoutRules(object):
     self._pairs = set(pairs)
 
   def __repr__(self):
-    return "LayoutRules%s" % self._pairs
+    return f"LayoutRules{self._pairs}"
 
   def tensor_dimension_to_mesh_axis(self, tensor_dimension, mesh_shape):
     """Mesh axis associated with tensor dimension (or None).
@@ -342,7 +339,7 @@ class TensorLayout(object):
     return self.tensor_axis_to_mesh_axis != other.tensor_axis_to_mesh_axis
 
   def __repr__(self):
-    return "TensorLayout%s" % (self.tensor_axis_to_mesh_axis,)
+    return f"TensorLayout{self.tensor_axis_to_mesh_axis}"
 
   def __len__(self):
     return len(self._tensor_axis_to_mesh_axis)
@@ -374,8 +371,8 @@ class TensorLayout(object):
     """
     ta2ma = self._tensor_axis_to_mesh_axis
     return tuple(
-        [ta2ma.index(mesh_axis) if mesh_axis in ta2ma else None
-         for mesh_axis in xrange(mesh_ndims)])
+        ta2ma.index(mesh_axis) if mesh_axis in ta2ma else None
+        for mesh_axis in xrange(mesh_ndims))
 
 
 class Graph(object):
@@ -419,9 +416,8 @@ class Graph(object):
     Returns:
       A string to use as the name for the operation.
     """
-    scope_name = tf.get_variable_scope().name
-    if scope_name:
-      name = scope_name + "/" + name
+    if scope_name := tf.get_variable_scope().name:
+      name = f"{scope_name}/{name}"
 
     # As in TensorFlow, treat names as case insensitive when deciding whether
     # they are in use.
@@ -486,7 +482,7 @@ class Graph(object):
     for op in operations:
       if isinstance(op, Assign):
         for v in op._variables:
-          var_to_assign_ops[v] += op.name + ", "
+          var_to_assign_ops[v] += f"{op.name}, "
     # Two variables with the same "key" can be stacked together.
     def var_key(v):
       return str([v.mesh,
@@ -494,6 +490,7 @@ class Graph(object):
                   str(v.dtype.__dict__),
                   v.trainable,
                   var_to_assign_ops[v]])
+
     key_to_vars = collections.defaultdict(collections.deque)
     for v in all_variables:
       key_to_vars[var_key(v)].append(v)
@@ -728,9 +725,8 @@ class Lowering(object):
       with tf.name_scope(op.name):
         op.lower(self)
       for out in op.outputs:
-        self.add_counter(
-            "output/%s" % type(op).__name__, self.laid_out_size(out))
-        self.add_counter("output_unique/%s" % type(op).__name__, out.size)
+        self.add_counter(f"output/{type(op).__name__}", self.laid_out_size(out))
+        self.add_counter(f"output_unique/{type(op).__name__}", out.size)
 
     def log_info(f=None):
       """Log the variables and operations, possibly to file `f` as well."""
@@ -777,14 +773,13 @@ class Lowering(object):
     return self.operations[op]
 
   def copy_masters_to_slices(self):
-    if os.environ.get("MTF_SEQUENCE_MODE", "") == "1":
-      mesh_impls = [impl for impl in six.itervalues(self.mesh_to_impl)]
-      assert len(mesh_impls) == 1
-      mesh_impl = mesh_impls[0]
-      return mesh_impl.copy_master_to_slice_ops[-1]
-    else:
+    if os.environ.get("MTF_SEQUENCE_MODE", "") != "1":
       return tf.group(
           [v.copy_master_to_slices for v in six.itervalues(self.variables)])
+    mesh_impls = list(six.itervalues(self.mesh_to_impl))
+    assert len(mesh_impls) == 1
+    mesh_impl = mesh_impls[0]
+    return mesh_impl.copy_master_to_slice_ops[-1]
 
   def copy_slices_to_masters(self):
     return tf.group(
@@ -819,21 +814,14 @@ class Lowering(object):
     actual_shape = laid_out_tensor.slice_shape
     if actual_shape != correct_shape:
       raise ValueError(
-          "Wrong slice shape: correct_shape = %s actual shape = %s"
-          % (correct_shape, actual_shape))
+          f"Wrong slice shape: correct_shape = {correct_shape} actual shape = {actual_shape}"
+      )
 
   def autostack(self):
     """Rewrite graph to combine similarly-shaped variables (faster startup)."""
-    num_slices = 0
-    for v in self.graph.all_variables:
-      num_slices += self.mesh_to_impl[v.mesh].size
-    if num_slices >= 2 ** 16:
-      # Startup times are slow with lots of variable slices.
-      # Perform more aggressive stacking
-      max_combined_slice_size = 2 ** 27
-    else:
-      # Stacking hurts memory utilization - only stack small variables.
-      max_combined_slice_size = 2 ** 16
+    num_slices = sum(self.mesh_to_impl[v.mesh].size
+                     for v in self.graph.all_variables)
+    max_combined_slice_size = 2 ** 27 if num_slices >= 2 ** 16 else 2 ** 16
     self.graph.rewrite_stack_variables(
         mesh_to_impl=self.mesh_to_impl,
         max_combined_slice_size=max_combined_slice_size)
@@ -1177,10 +1165,7 @@ class MeshImpl(object):
     for i in xrange(n):
       c = i - offset
       if c != c % n:
-        if wrap:
-          c = c % n
-        else:
-          c = None
+        c = c % n if wrap else None
       source_pcoord.append(c)
     return self.receive(x, mesh_axis, source_pcoord)
 
@@ -1262,9 +1247,8 @@ class MeshImpl(object):
     def my_fn(pnum):
       if tensor_layout.is_fully_replicated:
         return tf_tensor
-      else:
-        slice_begin = self.slice_begin(tensor_shape, pnum)
-        return tf.slice(tf_tensor, slice_begin, slice_shape)
+      slice_begin = self.slice_begin(tensor_shape, pnum)
+      return tf.slice(tf_tensor, slice_begin, slice_shape)
 
     return parallel([tf_tensor.device] * self.size, my_fn,
                     list(xrange(self.size)))
@@ -1295,10 +1279,9 @@ class MeshImpl(object):
           devices = [device] * slice_size
         else:
           devices = [ret[i].device for i in xrange(slice_size)]
-        concat_inputs = []
-        for i in xrange(slice_size):
-          concat_inputs.append(
-              [ret[i + slice_size * j] for j in xrange(mesh_dim.size)])
+        concat_inputs = [[
+            ret[i + slice_size * j] for j in xrange(mesh_dim.size)
+        ] for i in xrange(slice_size)]
         ret = parallel(
             devices, tf.concat, concat_inputs,
             axis=[tensor_axis] * len(devices))
@@ -1393,7 +1376,7 @@ def compatible_lazy_allreduce_sums(xs):
   """
   if not xs:
     return False
-  if not all([isinstance(x, LazyAllreduceSum) for x in xs]):
+  if not all(isinstance(x, LazyAllreduceSum) for x in xs):
     return False
   x = xs[0]
   for y in xs[1:]:
@@ -1435,15 +1418,15 @@ class Tensor(object):
       index: optional integer, the index among operation's output tensors
     """
     if not isinstance(shape, Shape):
-      raise ValueError("shape must be a Shape got %s" % shape.to_string)
+      raise ValueError(f"shape must be a Shape got {shape.to_string}")
     if not isinstance(dtype, tf.DType):
-      raise ValueError("dtype must be a tf.DType got %s" % dtype)
+      raise ValueError(f"dtype must be a tf.DType got {dtype}")
     self._mesh = operation.mesh
     self._operation = operation
     self._shape = shape
     self._dtype = dtype
     if name is None:
-      name = self.operation.name + ":" + str(index)
+      name = f"{self.operation.name}:{str(index)}"
     self._name = name
     # A flag that we can turn off to assert that no one uses the tensor
     #   as the input to an operation.
@@ -1521,7 +1504,7 @@ class Tensor(object):
 
   @property
   def to_string(self):
-    return "Tensor[%s, %s, %s]" % (self.name, self.shape.to_string, self.dtype)
+    return f"Tensor[{self.name}, {self.shape.to_string}, {self.dtype}]"
 
 
 class Operation(object):
@@ -1553,7 +1536,7 @@ class Operation(object):
     mesh.graph.operations.append(self)
     for t in inputs:
       if not t.usable:
-        raise ValueError("Operation %s has unusable input %s" % (self, t))
+        raise ValueError(f"Operation {self} has unusable input {t}")
 
   @property
   def graph(self):
@@ -1587,10 +1570,7 @@ class Operation(object):
 
   @property
   def to_string(self):
-    return "%s[Inputs=(%s) Outputs=(%s)]" % (
-        type(self).__name__,
-        ", ".join([t.to_string for t in self.inputs]),
-        ", ".join([t.to_string for t in self.outputs]))
+    return f'{type(self).__name__}[Inputs=({", ".join([t.to_string for t in self.inputs])}) Outputs=({", ".join([t.to_string for t in self.outputs])})]'
 
   @property
   def has_gradient(self):
@@ -1640,9 +1620,9 @@ class Operation(object):
     elif default_splittability == "unsplittable":
       return frozenset(exception_dims), frozenset(default_dims)
     else:
-      raise ValueError("default_splittability should be either \"splittable\" "
-                       "or \"unsplittable\" but was {}"
-                       .format(default_splittability))
+      raise ValueError(
+          f'default_splittability should be either \"splittable\" or \"unsplittable\" but was {default_splittability}'
+      )
 
   def _initialize_all_dimensions_as_splittable(self):
     """Helper init for the most common case: all dimensions may be split."""
@@ -1715,7 +1695,7 @@ class SlicewiseOperation(Operation):
       layout = mesh_impl.tensor_layout(t)
       for d, mesh_axis in zip(t.shape.dims, layout.tensor_axis_to_mesh_axis):
         if mesh_axis is not None and d.name not in self._splittable_dims:
-          raise ValueError("dimension %s is not declared as splittable" % d)
+          raise ValueError(f"dimension {d} is not declared as splittable")
     values = mesh_impl.slicewise(
         self._tf_fn, *[lowering.tensors[x] for x in self.inputs])
     if len(self.outputs) == 1:
@@ -1939,8 +1919,7 @@ def leaky_relu(x, alpha=0.2, name="leaky_relu"):
 
 
 def sign(x, name="sign"):
-  ret = cwise(tf.sign, [x], name=name, grad_function=0)
-  return ret
+  return cwise(tf.sign, [x], name=name, grad_function=0)
 
 
 def mtf_abs(x):
@@ -2056,8 +2035,7 @@ class BinaryOpWithBroadcasting(Operation):
     if x1.dtype != x2.dtype:
       # If there is ever a binary operation with different operand types, then
       # we should add an argument allow_different_operand_dtypes=False.
-      raise ValueError("Dtypes must be equal- got %s and %s"
-                       % (x1.dtype, x2.dtype))
+      raise ValueError(f"Dtypes must be equal- got {x1.dtype} and {x2.dtype}")
     assert isinstance(output_dtype, tf.DType)
     self._outputs = [Tensor(self, output_shape, output_dtype)]
     self._tf_fn = tf_fn
@@ -2316,8 +2294,7 @@ class ReduceOperation(Operation):
   def gradient(self, grad_ys):
     if self._reduction_fn_string == "SUM":
       return [broadcast(grad_ys[0], self.inputs[0].shape)]
-    elif (self._reduction_fn_string == "MAX" or
-          self._reduction_fn_string == "MIN"):
+    elif self._reduction_fn_string in ["MAX", "MIN"]:
       return [cast(equal(self.inputs[0], self.outputs[0]), self.inputs[0].dtype)
               * grad_ys[0]]
     else:
@@ -2332,8 +2309,11 @@ class ReduceOperation(Operation):
     y = mesh_impl.slicewise(slicewise_fn, lowering.tensors[self.inputs[0]])
     if reduced_mesh_axes:
       def add_counter_fn():
-        lowering.add_counter("allreduce/%s/reduce_op" % reduced_mesh_axes,
-                             lowering.laid_out_size(self.outputs[0]))
+        lowering.add_counter(
+            f"allreduce/{reduced_mesh_axes}/reduce_op",
+            lowering.laid_out_size(self.outputs[0]),
+        )
+
       if self._reduction_fn_string == "SUM":
         y = LazyAllreduceSum(
             mesh_impl, y, reduced_mesh_axes, add_counter_fn=add_counter_fn)
@@ -2429,12 +2409,10 @@ class PoolOperation(Operation):
     if "2D" in pool_fn_string:
       batch_dims = x.shape.dims[:-3]
       spatial_dims = x.shape.dims[-3:-1]
-      channel_dim = x.shape.dims[-1:]
     else:
       batch_dims = x.shape.dims[:-4]
       spatial_dims = x.shape.dims[-4:-1]
-      channel_dim = x.shape.dims[-1:]
-
+    channel_dim = x.shape.dims[-1:]
     # Compute output_shape and allocate output Tensor.
     output_spatial_dims = []
     for spatial_dim, kernel_size, stride_size in zip(
@@ -2522,7 +2500,7 @@ class PoolBackPropOperation(Operation):
             self._strides[0] * self._strides[1] * self._strides[2],
             dtype=x.dtype)
     else:
-      raise ValueError("Pooling %s is not implemented." % self._pool_fn_string)
+      raise ValueError(f"Pooling {self._pool_fn_string} is not implemented.")
 
     dx = mesh_impl.slicewise(
         slicewise_fn, *[lowering.tensors[x] for x in self.inputs])
@@ -2555,8 +2533,8 @@ class ConcatOperation(Operation):
 
     should_be_equal = [
         x.shape.resize_dimension(concat_dim_name, 0) for x in xs]
-    if not all(s == should_be_equal[0] for s in should_be_equal):
-      raise ValueError("shapes are not compatible %s" % xs)
+    if any(s != should_be_equal[0] for s in should_be_equal):
+      raise ValueError(f"shapes are not compatible {xs}")
 
     self._input_sizes = [x.shape.dims[self._axis].size for x in xs]
     output_size = sum(self._input_sizes)
@@ -2612,14 +2590,13 @@ class SplitOperation(Operation):
 
     self._split_dim = split_dim
     if split_dim not in x.shape.dims:
-      raise ValueError("%s does not contain dimension %s" % (x, split_dim))
+      raise ValueError(f"{x} does not contain dimension {split_dim}")
     self._axis = x.shape.dims.index(split_dim)
 
     if isinstance(num_or_size_splits, list):
       self._output_sizes = num_or_size_splits
       if sum(num_or_size_splits) != split_dim.size:
-        raise ValueError(
-            "Sizes do not add up %s %s" % (num_or_size_splits, split_dim))
+        raise ValueError(f"Sizes do not add up {num_or_size_splits} {split_dim}")
     else:
       assert isinstance(num_or_size_splits, int)
       assert split_dim.size % num_or_size_splits == 0
@@ -2678,8 +2655,7 @@ class StackOperation(Operation):
     input_shape = xs[0].shape
     for x in xs:
       if x.shape != xs[0].shape:
-        raise ValueError(
-            "inputs to stack must have the same shape, got %s" % xs)
+        raise ValueError(f"inputs to stack must have the same shape, got {xs}")
     output_shape = Shape(
         input_shape.dims[:axis] + [self._new_dim]+ input_shape.dims[axis:])
     self._outputs = [Tensor(self, output_shape, xs[0].dtype)]
@@ -2716,8 +2692,7 @@ def stack(xs, dim_name, axis=0, name=None):
   """
   if axis < 0:
     axis = xs[0].shape.ndims + 1 + axis
-  ret = StackOperation(xs, dim_name, axis, name).outputs[0]
-  return ret
+  return StackOperation(xs, dim_name, axis, name).outputs[0]
 
 
 class UnstackOperation(Operation):
@@ -2845,24 +2820,21 @@ class EinsumOperation(Operation):
       raise ValueError("Einsum needs at least one input")
     for x in inputs:
       if x.dtype != inputs[0].dtype:
-        raise ValueError("Input dtypes must be equal got %s"
-                         % ([y.dtype for y in inputs],))
+        raise ValueError(f"Input dtypes must be equal got {[y.dtype for y in inputs]}")
     self._outputs = [Tensor(self, output_shape, inputs[0].dtype)]
 
   def gradient(self, grad_ys):
     dy = grad_ys[0]
     xs = self.inputs
-    ret = []
-    for i in xrange(len(self.inputs)):
-      ret.append(
-          einsum([dy] + [xs[j] for j in xrange(len(xs)) if j != i], xs[i].shape)
-      )
-    return ret
+    return [
+        einsum([dy] + [xs[j] for j in xrange(len(xs)) if j != i], xs[i].shape)
+        for i in xrange(len(self.inputs))
+    ]
 
   def lower(self, lowering):
     mesh_impl = lowering.mesh_impl(self)
     xs = self.inputs
-    input_shape_set = set(sum([x.shape.dims for x in xs], []))
+    input_shape_set = set(sum((x.shape.dims for x in xs), []))
     output_shape = self.outputs[0].shape
     intersection_shape = Shape(
         [d for d in output_shape.dims if d in input_shape_set])
@@ -2873,8 +2845,10 @@ class EinsumOperation(Operation):
     if reduced_mesh_axes:
       def add_counter_fn():
         lowering.add_counter(
-            "allreduce/%s/einsum_op" % reduced_mesh_axes,
-            mesh_impl.laid_out_size(intersection_shape))
+            f"allreduce/{reduced_mesh_axes}/einsum_op",
+            mesh_impl.laid_out_size(intersection_shape),
+        )
+
       y = LazyAllreduceSum(
           mesh_impl, y, reduced_mesh_axes, add_counter_fn=add_counter_fn)
     # broadcast from intersection_shape to output_shape
@@ -2906,8 +2880,8 @@ class Conv2dOperation(Operation):
     self._fh_dim, self._fw_dim = conv_filter.shape.dims[:2]
     f_in_dim, self._out_dim = conv_filter.shape.dims[2:]
     if f_in_dim != self._in_dim:
-      raise ValueError("Dimensions do not match input=%s filter=%s"
-                       % (conv_input, conv_filter))
+      raise ValueError(
+          f"Dimensions do not match input={conv_input} filter={conv_filter}")
     out_h = self._in_h_dim.size
     out_w = self._in_w_dim.size
     if padding == "VALID":
@@ -2961,6 +2935,7 @@ class Conv2dOperation(Operation):
           _tf_flatten_batch_dims(tf_input, 3),
           tf_filter, self._strides, self._padding)
       return _tf_restore_batch_dims(output, 3, tf_input)
+
     y = mesh_impl.slicewise(
         tf_fn, lowering.tensors[conv_input], lowering.tensors[conv_filter])
     # reducing out input channels - may need to allreduce
@@ -2968,8 +2943,10 @@ class Conv2dOperation(Operation):
     if in_mesh_axis is not None:
       def add_counter_fn():
         lowering.add_counter(
-            "allreduce/%s/conv2d_op" % [in_mesh_axis],
-            mesh_impl.laid_out_size(self.outputs[0].shape))
+            f"allreduce/{[in_mesh_axis]}/conv2d_op",
+            mesh_impl.laid_out_size(self.outputs[0].shape),
+        )
+
       y = LazyAllreduceSum(mesh_impl, y, [in_mesh_axis], add_counter_fn)
     lowering.set_tensor_lowering(self.outputs[0], y)
     computation_shape = _shape_union([conv_filter.shape, self.outputs[0].shape])
@@ -3009,10 +2986,7 @@ class Conv2or3dBackpropInputOperation(Operation):
         input_sizes[-self._num_nonbatch_dims:])
 
     if self._is_transpose:
-      if self._conv_dimension == 2:
-        backprop_fn = tf.nn.conv2d
-      else:
-        backprop_fn = tf.nn.conv3d
+      backprop_fn = tf.nn.conv2d if self._conv_dimension == 2 else tf.nn.conv3d
       def tf_fn(tf_dy, tf_filter):
         return _tf_restore_batch_dims(
             backprop_fn(
@@ -3020,6 +2994,7 @@ class Conv2or3dBackpropInputOperation(Operation):
                 tf_filter,
                 self._strides, self._padding),
             self._num_nonbatch_dims, tf_dy)
+
       dx = mesh_impl.slicewise(
           tf_fn, lowering.tensors[dy], lowering.tensors[conv_filter])
 
@@ -3177,8 +3152,8 @@ class Conv3dOperation(Operation):
     self._fd_dim, self._fh_dim, self._fw_dim = conv_filter.shape.dims[:3]
     f_in_dim, self._out_dim = conv_filter.shape.dims[3:]
     if f_in_dim != self._in_dim:
-      raise ValueError("Dimensions do not match input=%s filter=%s"
-                       % (conv_input, conv_filter))
+      raise ValueError(
+          f"Dimensions do not match input={conv_input} filter={conv_filter}")
     out_d = self._in_d_dim.size
     out_h = self._in_h_dim.size
     out_w = self._in_w_dim.size
@@ -3241,6 +3216,7 @@ class Conv3dOperation(Operation):
           _tf_flatten_batch_dims(tf_input, 4),
           tf_filter, self._strides, self._padding)
       return _tf_restore_batch_dims(output, 4, tf_input)
+
     y = mesh_impl.slicewise(
         tf_fn, lowering.tensors[conv_input], lowering.tensors[conv_filter])
     # reducing out input channels - may need to allreduce
@@ -3248,8 +3224,10 @@ class Conv3dOperation(Operation):
     if in_mesh_axis is not None:
       def add_counter_fn():
         lowering.add_counter(
-            "allreduce/%s/conv3d_op" % [in_mesh_axis],
-            mesh_impl.laid_out_size(self.outputs[0].shape))
+            f"allreduce/{[in_mesh_axis]}/conv3d_op",
+            mesh_impl.laid_out_size(self.outputs[0].shape),
+        )
+
       y = LazyAllreduceSum(mesh_impl, y, [in_mesh_axis], add_counter_fn)
     lowering.set_tensor_lowering(self.outputs[0], y)
     computation_shape = _shape_union([conv_filter.shape, self.outputs[0].shape])
@@ -3306,8 +3284,8 @@ class Conv2dTransposeOperation(Operation):
     # Filter shape is transposed.
     self._out_dim, f_in_dim = conv_filter.shape.dims[2:]
     if f_in_dim != self._in_dim:
-      raise ValueError("Dimensions do not match input=%s filter=%s"
-                       % (conv_input, conv_filter))
+      raise ValueError(
+          f"Dimensions do not match input={conv_input} filter={conv_filter}")
 
     # compute output shape.
     # now we assume the padding doesn't change the output shape.
@@ -3386,8 +3364,10 @@ class Conv2dTransposeOperation(Operation):
     if in_mesh_axis is not None:
       def add_counter_fn():
         lowering.add_counter(
-            "allreduce/%s/conv2d_transpose_op" % [in_mesh_axis],
-            mesh_impl.laid_out_size(self.outputs[0].shape))
+            f"allreduce/{[in_mesh_axis]}/conv2d_transpose_op",
+            mesh_impl.laid_out_size(self.outputs[0].shape),
+        )
+
       y = LazyAllreduceSum(mesh_impl, y, [in_mesh_axis], add_counter_fn)
     lowering.set_tensor_lowering(self.outputs[0], y)
     computation_shape = _shape_union([conv_filter.shape, self.outputs[0].shape])
@@ -3446,8 +3426,8 @@ class Conv3dTransposeOperation(Operation):
     # Filter shape is transposed.
     self._out_dim, f_in_dim = conv_filter.shape.dims[3:]
     if f_in_dim != self._in_dim:
-      raise ValueError("Dimensions do not match input=%s filter=%s"
-                       % (conv_input, conv_filter))
+      raise ValueError(
+          f"Dimensions do not match input={conv_input} filter={conv_filter}")
 
     # compute output shape.
     # now we assume the padding doesn't change the output shape.
@@ -3533,8 +3513,10 @@ class Conv3dTransposeOperation(Operation):
     if in_mesh_axis is not None:
       def add_counter_fn():
         lowering.add_counter(
-            "allreduce/%s/conv3d_transpose_op" % [in_mesh_axis],
-            mesh_impl.laid_out_size(self.outputs[0].shape))
+            f"allreduce/{[in_mesh_axis]}/conv3d_transpose_op",
+            mesh_impl.laid_out_size(self.outputs[0].shape),
+        )
+
       y = LazyAllreduceSum(mesh_impl, y, [in_mesh_axis], add_counter_fn)
     lowering.set_tensor_lowering(self.outputs[0], y)
     computation_shape = _shape_union([conv_filter.shape, self.outputs[0].shape])
@@ -3706,8 +3688,8 @@ def dynamic_shift(x, offset, dim, wrap):
     raise ValueError("dim may not appear in offset")
   for d in offset.shape.dims:
     if d not in x.shape.dims:
-      raise ValueError("offset.shape %s must be a subset of x.shape %s"
-                       % (offset.shape, x.shape))
+      raise ValueError(
+          f"offset.shape {offset.shape} must be a subset of x.shape {x.shape}")
   tmp_dim = Dimension("dynamic_shift_tmp", dim.size)
   x_reshaped = replace_dimensions(x, dim, tmp_dim)
   dim_range = mtf_range(x.mesh, dim, dtype=tf.int32)
@@ -3778,7 +3760,7 @@ class PadOperation(Operation):
     input_shape = self._inputs[0].shape
     dim_names = [dim.name for dim in x.shape.dims]
     if pad_dim_name not in dim_names:
-      raise ValueError("Padding dim name %s not found in input." % pad_dim_name)
+      raise ValueError(f"Padding dim name {pad_dim_name} not found in input.")
     self._paddings = paddings
     self._axis = axis = dim_names.index(pad_dim_name)
     output_size = input_shape.dims[axis].size + sum(paddings)
@@ -3821,7 +3803,7 @@ class OneHotOperation(Operation):
                name=None):
     super(OneHotOperation, self).__init__([indices], name=name or "one_hot")
     if not indices.dtype.is_integer:
-      raise ValueError("indices requires an integer dtype got %s" % indices)
+      raise ValueError(f"indices requires an integer dtype got {indices}")
     self._output_dim = output_dim
     self._on_value = on_value
     self._off_value = off_value
@@ -3864,8 +3846,9 @@ class ImportOperation(Operation):
     super(ImportOperation, self).__init__([], mesh=mesh, name=name or "import")
     tf_tensor = tf.convert_to_tensor(tf_tensor)
     if not tf_tensor.shape.is_compatible_with(shape.to_integer_list):
-      raise ValueError("Incompatible Shape - trying to import %s with shape %s"
-                       % (tf_tensor, shape))
+      raise ValueError(
+          f"Incompatible Shape - trying to import {tf_tensor} with shape {shape}"
+      )
     self._outputs = [Tensor(self, shape, tf_tensor.dtype)]
     self._tf_tensor = tf_tensor
 
@@ -4016,7 +3999,7 @@ class Variable(Operation):
       self, mesh, name, shape, dtype, initializer, trainable, **kwargs):
     super(Variable, self).__init__([], mesh, name="name_will_be_set_later")
     if not isinstance(dtype, VariableDType):
-      raise ValueError("dtype must be a VariableDType got %s" % dtype)
+      raise ValueError(f"dtype must be a VariableDType got {dtype}")
     self._dtype = dtype
     self._trainable = trainable
     if not isinstance(self, StackedVariable):
@@ -4040,7 +4023,7 @@ class Variable(Operation):
       self.graph.trainable_variables.append(self)
 
   def __repr__(self):
-    return "Variable(%s)" % self.value
+    return f"Variable({self.value})"
 
   def lower(self, lowering):
     mesh_impl = lowering.mesh_impl(self)
@@ -4113,7 +4096,7 @@ class StackedVariable(Variable):
       vs: a list of Variables
     """
     shape = Shape([Dimension("stacked", len(vs))] + vs[0].shape.dims)
-    name = "stacked/" + vs[0].name
+    name = f"stacked/{vs[0].name}"
     # TODO(noam): verify that vs are the same shape, etc.
     super(StackedVariable, self).__init__(
         vs[0].mesh, name, shape, vs[0].dtype, None, vs[0].trainable)
@@ -4191,16 +4174,14 @@ def get_variable(mesh, name, shape, dtype=tf.float32,
         master_dtype or dtype, slice_dtype or dtype, activation_dtype or dtype)
   elif not isinstance(dtype, VariableDType):
     raise ValueError("dtype should be a tf.dtype or a mtf.VariableDType")
-  scope_name = tf.get_variable_scope().name
-  if scope_name:
-    full_name = scope_name + "/" + name
+  if scope_name := tf.get_variable_scope().name:
+    full_name = f"{scope_name}/{name}"
   else:
     full_name = name
   if initializer is None:
     tf.logging.warning(
-        "Using default tf glorot_uniform_initializer for variable %s "
-        " The initialzer will guess the input and output dimensions "
-        " based on dimension order." % full_name)
+        f"Using default tf glorot_uniform_initializer for variable {full_name}  The initialzer will guess the input and output dimensions  based on dimension order."
+    )
   if full_name in mesh.graph.name_to_variable:
     var = mesh.graph.name_to_variable[full_name]
   else:
@@ -4208,8 +4189,7 @@ def get_variable(mesh, name, shape, dtype=tf.float32,
         mesh, name, convert_to_shape(shape), dtype, initializer, trainable,
         **kwargs)
     if var.name != full_name:
-      raise ValueError(
-          "Expected var.name == full_name.  %s vs %s" % (var.name, full_name))
+      raise ValueError(f"Expected var.name == full_name.  {var.name} vs {full_name}")
     mesh.graph.name_to_variable[full_name] = var
   return var.outputs[0]
 
@@ -4245,11 +4225,12 @@ class Assign(Operation):
     self._outputs = []
 
   def lower(self, lowering):
-    ops = []
-    for var, val in zip(self._variables, self.inputs):
-      ops.append(lowering.variables[var].assign_to_slices(
-          self._assign_fn,
-          lowering.tensors[val].to_laid_out_tensor().all_slices))
+    ops = [
+        lowering.variables[var].assign_to_slices(
+            self._assign_fn,
+            lowering.tensors[val].to_laid_out_tensor().all_slices,
+        ) for var, val in zip(self._variables, self.inputs)
+    ]
     lowering.operations[self] = tf.group(ops)
 
   @property
@@ -4476,7 +4457,7 @@ def Print(x, data, message, **kwargs):  # pylint: disable=invalid-name
   Returns:
     a Tensor which is identical in value to x
   """
-  message += " %s" % data
+  message += f" {data}"
   return PrintOperation(x, data, message, **kwargs).outputs[0]
 
 
@@ -4486,8 +4467,8 @@ class ReshapeOperation(Operation):
   def __init__(self, x, new_shape, name=None):
     super(ReshapeOperation, self).__init__([x], x.mesh, name=name or "reshape")
     if x.shape.size != new_shape.size:
-      raise ValueError("Cannot reshape Tensor %s to shape %s - sizes differ."
-                       % (x, new_shape))
+      raise ValueError(
+          f"Cannot reshape Tensor {x} to shape {new_shape} - sizes differ.")
     self._outputs = [Tensor(self, new_shape, x.dtype)]
 
     # Rerun to take the new output into account.
@@ -4560,8 +4541,7 @@ class ReshapeOperation(Operation):
       assert concat_tensor_axis is not None
       slices = mesh_impl.alltoall(
           slices, mesh_axis, split_tensor_axis, concat_tensor_axis)
-      lowering.add_counter(
-          "alltoall/%s/reshape_op" % mesh_axis, laid_out_size)
+      lowering.add_counter(f"alltoall/{mesh_axis}/reshape_op", laid_out_size)
 
     for mesh_axis in mesh_axes_allconcat:
       tensor_axis = old_shape.cumprod_to_tensor_axis(
@@ -4569,14 +4549,14 @@ class ReshapeOperation(Operation):
       assert tensor_axis is not None
       slices = mesh_impl.allconcat(slices, mesh_axis, tensor_axis)
       laid_out_size *= mesh_impl.shape[mesh_axis].size
-      lowering.add_counter(
-          "allconcat/%s/reshape_op" % mesh_axis, laid_out_size)
+      lowering.add_counter(f"allconcat/{mesh_axis}/reshape_op", laid_out_size)
     # now reshape the slices
     new_slice_shape = mesh_impl.slice_shape(new_shape)
     for mesh_axis, tensor_axis in allsplit_after_reshape:
       new_slice_shape[tensor_axis] *= mesh_impl.shape[mesh_axis].size
     def reshape_fn(x):
       return tf.reshape(x, new_slice_shape)
+
     slices = mesh_impl.slicewise_delay_allreduce(reshape_fn, slices)
     for mesh_axis, tensor_axis in allsplit_after_reshape:
       slices = mesh_impl.allsplit(slices, mesh_axis, tensor_axis)
@@ -4593,8 +4573,8 @@ def reshape(x, new_shape, name="reshape"):
 def transpose(x, new_shape, name="transpose"):
   new_shape = convert_to_shape(new_shape)
   if set(x.shape.dims) != set(new_shape.dims):
-    raise ValueError("x must have the same dimensions as new_shape %s vs %s"
-                     % (x, new_shape))
+    raise ValueError(
+        f"x must have the same dimensions as new_shape {x} vs {new_shape}")
   return einsum([x], output_shape=new_shape, name=name)
 
 
@@ -4631,7 +4611,7 @@ def replace_dimensions(tensor_or_shape, old_dim_or_dims, new_dim_or_dims):
         tensor_or_shape.shape, old_dim_or_dims, new_dim_or_dims))
   if not isinstance(tensor_or_shape, Shape):
     raise ValueError(
-        "tensor_or_shape must be a Tensor or Shape got %s" % (tensor_or_shape,))
+        f"tensor_or_shape must be a Tensor or Shape got {tensor_or_shape}")
   in_dims = tensor_or_shape.dims
   if isinstance(old_dim_or_dims, Dimension):
     old_dim_or_dims = [old_dim_or_dims]
@@ -4639,12 +4619,12 @@ def replace_dimensions(tensor_or_shape, old_dim_or_dims, new_dim_or_dims):
     new_dim_or_dims = [new_dim_or_dims]
   if not isinstance(old_dim_or_dims, list) or not old_dim_or_dims:
     raise ValueError(
-        "old_dim_or_dims must be a Dimension or a list of Dimension got %s"
-        % (old_dim_or_dims,))
+        f"old_dim_or_dims must be a Dimension or a list of Dimension got {old_dim_or_dims}"
+    )
   if not isinstance(new_dim_or_dims, list) or not new_dim_or_dims:
     raise ValueError(
-        "new_dim_or_dims must be a Dimension or a list of Dimension got %s"
-        % (new_dim_or_dims,))
+        f"new_dim_or_dims must be a Dimension or a list of Dimension got {new_dim_or_dims}"
+    )
   try:
     positions = [in_dims.index(d) for d in old_dim_or_dims]
     pos = positions[0]
@@ -4709,8 +4689,8 @@ def einsum(xs, output_shape=None, reduced_dims=None, name=None):
   if reduced_dims is not None:
     for d in reduced_dims:
       if not isinstance(d, Dimension):
-        raise ValueError("reduced_dims must be a list of Dimensions.  Got %s."
-                         % (reduced_dims,))
+        raise ValueError(
+            f"reduced_dims must be a list of Dimensions.  Got {reduced_dims}.")
   if output_shape is None:
     if reduced_dims is None:
       reduced_dims = [d for d, c in six.iteritems(input_dim_count) if c > 1]
@@ -4737,17 +4717,15 @@ def _reduction_output_shape(x, output_shape, reduced_dim):
   if output_shape is None:
     if reduced_dim is None:
       return Shape([])
-    else:
-      if reduced_dim not in x.shape.dims:
-        raise ValueError(
-            "reduced_dim=%s not in x.shape.dims=%s" % (reduced_dim, x.shape))
-      return x.shape - reduced_dim
-  if reduced_dim is not None:
-    if [reduced_dim] != [d for d in x.shape.dims if d not in output_shape.dims]:
-      raise ValueError(
-          "reduced_dim contradicts output_shape:"
-          "x=%s output_shape=%s reduced_dim=%s" %
-          (x, output_shape, reduced_dim))
+    if reduced_dim not in x.shape.dims:
+      raise ValueError(f"reduced_dim={reduced_dim} not in x.shape.dims={x.shape}")
+    return x.shape - reduced_dim
+  if reduced_dim is not None and [reduced_dim] != [
+      d for d in x.shape.dims if d not in output_shape.dims
+  ]:
+    raise ValueError(
+        f"reduced_dim contradicts output_shape:x={x} output_shape={output_shape} reduced_dim={reduced_dim}"
+    )
   return output_shape
 
 
@@ -4905,11 +4883,10 @@ class TopKOperation(Operation):
     super(TopKOperation, self).__init__([x], name=name or "top_k")
     self._value_dtype = x.dtype
     if reduced_dim not in x.shape.dims:
-      raise ValueError("reduced dim %s must be in x.shape %s"
-                       % (reduced_dim, x.shape))
+      raise ValueError(f"reduced dim {reduced_dim} must be in x.shape {x.shape}")
     if k_dim.size > reduced_dim.size:
-      raise ValueError("k_dim.size must be <= reduced_dim.size: %s vs %s"
-                       % (k_dim, reduced_dim))
+      raise ValueError(
+          f"k_dim.size must be <= reduced_dim.size: {k_dim} vs {reduced_dim}")
     output_shape = x.shape - reduced_dim + k_dim
     self._outputs = [Tensor(self, output_shape, x.dtype),
                      Tensor(self, output_shape, tf.int32),]
@@ -4985,9 +4962,8 @@ def top_k(x, reduced_dim, k_dim, name=None):
   """
   if k_dim.size > 1 and k_dim.size < 5:
     return _iterative_top_k(x, reduced_dim, k_dim, name=name)
-  else:
-    op = TopKOperation(x, reduced_dim, k_dim, name=name)
-    return op.outputs[0], op.outputs[1]
+  op = TopKOperation(x, reduced_dim, k_dim, name=name)
+  return op.outputs[0], op.outputs[1]
 
 
 def _iterative_top_k(x, reduced_dim, k_dim, name=None):
@@ -5114,9 +5090,7 @@ def add(x1, x2, output_shape=None, name=None):
 
 
 def add_n(xs):
-  if not xs:
-    return 0
-  return functools.reduce(add, xs)
+  return 0 if not xs else functools.reduce(add, xs)
 
 
 def sub(x1, x2, output_shape=None, name=None):
@@ -5277,16 +5251,15 @@ def gradients(ys, xs, grad_ys=None, operations=None):
   # figure out what Tensors are downstream of xs
   downstream = set(xs)
   for op in operations:
-    if op.has_gradient:
-      if set(op.inputs) & downstream:
-        downstream |= set(op.outputs)
+    if op.has_gradient and set(op.inputs) & downstream:
+      downstream |= set(op.outputs)
   tensor_to_gradient = {y: g for y, g in zip(ys, grad_ys) if g is not None}
   with tf.variable_scope(ys[0].graph.captured_variable_scope):
     for op in operations[::-1]:
       grad_outputs = [tensor_to_gradient.get(out) for out in op.outputs]
       if (op.has_gradient and any(grad_outputs)
           and (set(op.inputs) & downstream)):
-        with tf.variable_scope(op.name + "/gradients"):
+        with tf.variable_scope(f"{op.name}/gradients"):
           input_grads = op.gradient(grad_outputs)
           for inp, grad in zip(op.inputs, input_grads):
             if inp in downstream and grad is not None:
@@ -5387,9 +5360,7 @@ def is_subsequence(short_seq, long_seq):
       return True
     if short_seq[pos] == x:
       pos += 1
-  if pos == len(short_seq):
-    return True
-  return False
+  return pos == len(short_seq)
 
 
 def verify_no_new_dims(input_shapes, output_shape):
@@ -5401,13 +5372,12 @@ def verify_no_new_dims(input_shapes, output_shape):
   Raises:
     ValueError: if there are new dimensions in the output.
   """
-  all_input_dims = set(sum([s.dims for s in input_shapes], []))
   all_output_dims = set(output_shape.dims)
+  all_input_dims = set(sum((s.dims for s in input_shapes), []))
   if not all_output_dims.issubset(all_input_dims):
     raise ValueError(
-        "No new dimensions allowed in output"
-        " input_shapes = %s output_shape= %s"
-        % ([s.dims for s in input_shapes], output_shape.dims))
+        f"No new dimensions allowed in output input_shapes = {[s.dims for s in input_shapes]} output_shape= {output_shape.dims}"
+    )
 
 
 def pnum_to_processor_coordinates(mesh_shape, pnum):
@@ -5480,11 +5450,9 @@ def processor_coordinates_to_pnum_map_nd(mesh_shape, logical_to_physical,
   Returns:
     A map of logical to physical pnums
   """
-  coordinate_map = []
   num_replicas = device_assignment.num_replicas
   hw_mesh_shape = [int(i) for i in device_assignment.topology.mesh_shape]
-  for i in range(num_replicas):
-    coordinate_map.append(-1)
+  coordinate_map = [-1 for _ in range(num_replicas)]
   for i in range(num_replicas):
     coord = device_assignment.coordinates(i, 0)
     logical_id = coord[0] + coord[1] * hw_mesh_shape[0] + coord[

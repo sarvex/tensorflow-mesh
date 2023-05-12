@@ -60,9 +60,7 @@ class Optimizer(object):
     ops = []
     for grad, var in zip(grads, variables):
       ops.extend(self.apply_grad(grad, var))
-    if not ops:
-      return ops
-    return variables[0].graph.combine_assignments(ops)
+    return ops if not ops else variables[0].graph.combine_assignments(ops)
 
   def apply_grad(self, grad, var):
     """Update variable and accumulators.
@@ -73,7 +71,7 @@ class Optimizer(object):
     Returns:
       a list of Operations
     """
-    raise ValueError("apply_grad not implemented %s %s" % (grad, var))
+    raise ValueError(f"apply_grad not implemented {grad} {var}")
 
 
 @gin.configurable
@@ -120,13 +118,19 @@ class MomentumOptimizer(Optimizer):
 
     updates = []
     v = mtf.get_variable(
-        var.mesh, var.name + "_momentum_v", var.shape,
-        dtype=var.dtype, initializer=tf.zeros_initializer(), trainable=False)
+        var.mesh,
+        f"{var.name}_momentum_v",
+        var.shape,
+        dtype=var.dtype,
+        initializer=tf.zeros_initializer(),
+        trainable=False,
+    )
 
-    with tf.variable_scope(var.name + "/sgd_momentum"):
-      updates.append(mtf.assign(v, grad * self.lr + v * self.momentum))
-      updates.append(mtf.assign_sub(var, v))
-
+    with tf.variable_scope(f"{var.name}/sgd_momentum"):
+      updates.extend((
+          mtf.assign(v, grad * self.lr + v * self.momentum),
+          mtf.assign_sub(var, v),
+      ))
     return updates
 
 
@@ -157,15 +161,21 @@ class AdamWeightDecayOptimizer(Optimizer):
       return []
     grad = mtf.to_float(grad)
 
-    assignments = []
-
     m = mtf.get_variable(
-        var.mesh, var.name + "/adam_m", var.shape,
-        initializer=tf.zeros_initializer(), trainable=False)
+        var.mesh,
+        f"{var.name}/adam_m",
+        var.shape,
+        initializer=tf.zeros_initializer(),
+        trainable=False,
+    )
 
     v = mtf.get_variable(
-        var.mesh, var.name + "/adam_v", var.shape,
-        initializer=tf.zeros_initializer(), trainable=False)
+        var.mesh,
+        f"{var.name}/adam_v",
+        var.shape,
+        initializer=tf.zeros_initializer(),
+        trainable=False,
+    )
 
     # Standard Adam update.
     next_m = self.beta_1 * m + (1.0 - self.beta_1) * grad
@@ -187,11 +197,7 @@ class AdamWeightDecayOptimizer(Optimizer):
 
     var_update = mtf.assign_sub(var, update_with_lr)
 
-    assignments.extend(
-        [var_update,
-         mtf.assign(m, next_m),
-         mtf.assign(v, next_v)])
-    return assignments
+    return [var_update, mtf.assign(m, next_m), mtf.assign(v, next_v)]
 
   def _do_use_weight_decay(self, param_name):
     """Whether to use L2 weight decay for `param_name`."""
@@ -317,26 +323,42 @@ class AdafactorOptimizer(Optimizer):
       vr_shape = var.shape - d0
       vc_shape = var.shape - d1
       vr = mtf.get_variable(
-          var.mesh, var.name + "_slot_vr", vr_shape,
-          initializer=tf.zeros_initializer(), trainable=False)
+          var.mesh,
+          f"{var.name}_slot_vr",
+          vr_shape,
+          initializer=tf.zeros_initializer(),
+          trainable=False,
+      )
       vc = mtf.get_variable(
-          var.mesh, var.name + "_slot_vc", vc_shape,
-          initializer=tf.zeros_initializer(), trainable=False)
+          var.mesh,
+          f"{var.name}_slot_vc",
+          vc_shape,
+          initializer=tf.zeros_initializer(),
+          trainable=False,
+      )
     else:
       v = mtf.get_variable(
-          var.mesh, var.name + "_slot_v", var.shape,
-          initializer=tf.zeros_initializer(), trainable=False)
+          var.mesh,
+          f"{var.name}_slot_v",
+          var.shape,
+          initializer=tf.zeros_initializer(),
+          trainable=False,
+      )
     if self._beta1:
       m = mtf.get_variable(
-          var.mesh, var.name + "_slot_m", var.shape,
-          initializer=tf.zeros_initializer(), trainable=False)
+          var.mesh,
+          f"{var.name}_slot_m",
+          var.shape,
+          initializer=tf.zeros_initializer(),
+          trainable=False,
+      )
 
-    with tf.variable_scope(var.name + "/adafactor"):
+    with tf.variable_scope(f"{var.name}/adafactor"):
       grad_squared = mtf.square(grad) + self._epsilon1
       decay_rate = self._decay_rate
       old_val = mtf.to_float(var.value)
-      if self._multiply_by_parameter_scale and not any([
-          s in var.name for s in self._exclude_from_parameter_scale]):
+      if self._multiply_by_parameter_scale and all(
+          s not in var.name for s in self._exclude_from_parameter_scale):
         update_scale = self._parameter_scale(old_val) * self._learning_rate
       else:
         update_scale = self._learning_rate
@@ -399,8 +421,7 @@ def adafactor_decay_rate_adam(beta2):
     a scalar
   """
   t = tf.cast(tf.train.get_or_create_global_step(), tf.float32) + 1.0
-  decay = beta2 * (1.0 - tf.pow(beta2, t - 1.0)) / (1.0 - tf.pow(beta2, t))
-  return decay
+  return beta2 * (1.0 - tf.pow(beta2, t - 1.0)) / (1.0 - tf.pow(beta2, t))
 
 
 @gin.configurable

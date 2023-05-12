@@ -144,9 +144,7 @@ def _gen_rand_mask(ratio_mean, ratio_stddev, scale, shape, smoothness=0):
     pattern = tf.reduce_sum(pattern, -1)
 
   thres = tfp.stats.percentile(pattern, q=percentil_q)
-  rand_mask = tf.less(pattern, thres)
-
-  return rand_mask
+  return tf.less(pattern, thres)
 
 
 def maybe_gen_fake_data_based_on_real_data(

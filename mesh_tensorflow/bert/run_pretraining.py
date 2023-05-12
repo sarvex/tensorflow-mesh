@@ -135,7 +135,7 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 
     tf.logging.info("*** Features ***")
     for name in sorted(features.keys()):
-      tf.logging.info("  name = %s, shape = %s" % (name, features[name].shape))
+      tf.logging.info(f"  name = {name}, shape = {features[name].shape}")
 
     # MTF setup.
     graph = mtf.Graph()
@@ -147,7 +147,7 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
       num_hosts = ctx.num_hosts
       host_placement_fn = ctx.tpu_host_placement_function
       device_list = [host_placement_fn(host_id=t) for t in range(num_hosts)]
-      tf.logging.info("device_list = %s" % device_list,)
+      tf.logging.info(f"device_list = {device_list}")
       replica_cache_size = 300 * 1000000  # 300M per replica
       # Worker 0 caches all the TPU binaries.
       worker0_mem = replica_cache_size * ctx.num_replicas
@@ -425,7 +425,7 @@ def main(_):
 
   tf.logging.info("*** Input Training Files ***")
   for input_train_file in input_train_files:
-    tf.logging.info("  %s" % input_train_file)
+    tf.logging.info(f"  {input_train_file}")
 
   input_eval_files = []
   for input_pattern in FLAGS.input_eval_files.split(","):
@@ -433,7 +433,7 @@ def main(_):
 
   tf.logging.info("*** Input Evaluation Files ***")
   for input_eval_file in input_eval_files:
-    tf.logging.info("  %s" % input_eval_file)
+    tf.logging.info(f"  {input_eval_file}")
 
   tpu_cluster_resolver = None
   if FLAGS.use_tpu and FLAGS.tpu_name:
@@ -490,14 +490,14 @@ def main(_):
       current_step = 0
 
     while current_step < FLAGS.num_train_steps:
-      if FLAGS.mode == "train_and_eval":
+      if FLAGS.mode == "train":
+        next_checkpoint = FLAGS.num_train_steps
+
+      elif FLAGS.mode == "train_and_eval":
         # Train for up to steps_per_eval number of steps.
         # At the end of training, a checkpoint will be written to --model_dir.
         next_checkpoint = min(current_step + FLAGS.steps_per_eval,
                               FLAGS.num_train_steps)
-      elif FLAGS.mode == "train":
-        next_checkpoint = FLAGS.num_train_steps
-
       if FLAGS.mode in ("train_and_eval", "train"):
         start_timestamp = time.time()  # This time will include compilation time
         tf.logging.info("Starting to train.")
@@ -511,8 +511,8 @@ def main(_):
         tf.logging.info("Starting to evaluate.")
         result = estimator.evaluate(
             input_fn=eval_input_fn, steps=FLAGS.max_eval_steps)
-        output_eval_file = os.path.join(
-            FLAGS.output_dir, "eval_results_{}.txt".format(current_step))
+        output_eval_file = os.path.join(FLAGS.output_dir,
+                                        f"eval_results_{current_step}.txt")
         with tf.gfile.GFile(output_eval_file, "w") as writer:
           tf.logging.info("***** Eval results *****")
           for key in sorted(result.keys()):

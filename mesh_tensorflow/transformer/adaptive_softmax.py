@@ -247,8 +247,8 @@ class AdaptiveSoftmaxVocabEmbedding(object):
     token_counts = [cluster["token_count"] for cluster in clusters]
     if sum(token_counts) != vocab_dim.size:
       raise ValueError(
-          "The cluster token counts {} do not sum to the vocab size {}.".format(
-              token_counts, vocab_dim.size))
+          f"The cluster token counts {token_counts} do not sum to the vocab size {vocab_dim.size}."
+      )
 
     self._tail_clusters = []
     start_token_id = 0
@@ -267,8 +267,8 @@ class AdaptiveSoftmaxVocabEmbedding(object):
     length_projection_factor = cluster_spec.get("length_projection_factor", 1)
     if length_projection_factor <= 0 or length_projection_factor > 1:
       raise ValueError(
-          "Invalid length_projection_factor of {}. Must be in range (0, 1]"
-          .format(length_projection_factor))
+          f"Invalid length_projection_factor of {length_projection_factor}. Must be in range (0, 1]"
+      )
 
     if index == 0:
       # Include the entries for the tail clusters in the head cluster "vocab".
@@ -285,17 +285,19 @@ class AdaptiveSoftmaxVocabEmbedding(object):
           vocab_dim=cluster_vocab_dim,
           output_dim=self._output_dim,
           variable_dtype=self._variable_dtype,
-          name="{}_{}".format(self._name, index),
-          ensemble_dim=self._ensemble_dim)
+          name=f"{self._name}_{index}",
+          ensemble_dim=self._ensemble_dim,
+      )
     else:
       cluster_embedding = vocab_embeddings.FactorizedVocabEmbedding(
           mesh=self._mesh,
           vocab_dim=cluster_vocab_dim,
           output_dim=self._output_dim,
           variable_dtype=self._variable_dtype,
-          name="{}_{}".format(self._name, index),
+          name=f"{self._name}_{index}",
           ensemble_dim=self._ensemble_dim,
-          inner_dimension_size=embedding_size)
+          inner_dimension_size=embedding_size,
+      )
     return _Cluster(
         embedding=cluster_embedding,
         start_token_id=start_token_id,

@@ -15,6 +15,7 @@
 
 """Distributed variable implementation for TPUs."""
 
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -35,10 +36,7 @@ except ImportError:
   TF_23 = False
 
 
-if TF_23:
-  VariableBase = core.Tensor
-else:
-  VariableBase = object
+VariableBase = core.Tensor if TF_23 else object
 
 
 @contextlib.contextmanager
@@ -152,8 +150,7 @@ class ReplicatedVariable(VariableBase):
   def _read_variable_op(self):
     if _enclosing_tpu_context() is None:
       return self._primary_var.read_value()
-    v = gen_resource_variable_ops.read_variable_op(self.handle, self._dtype)
-    return v
+    return gen_resource_variable_ops.read_variable_op(self.handle, self._dtype)
 
   def read_value(self):
     return self._read_variable_op()
@@ -164,9 +161,7 @@ class ReplicatedVariable(VariableBase):
       value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
       assign_op = gen_resource_variable_ops.assign_variable_op(
           self.handle, value_tensor, name=name)
-    if read_value:
-      return self._read_variable_op()
-    return assign_op
+    return self._read_variable_op() if read_value else assign_op
 
   def assign_add(self, delta, use_locking=None, name=None, read_value=True):
     del use_locking
@@ -175,9 +170,7 @@ class ReplicatedVariable(VariableBase):
           self.handle,
           ops.convert_to_tensor(delta, dtype=self.dtype),
           name=name)
-    if read_value:
-      return self._read_variable_op()
-    return assign_add_op
+    return self._read_variable_op() if read_value else assign_add_op
 
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
     del use_locking
@@ -186,9 +179,7 @@ class ReplicatedVariable(VariableBase):
           self.handle,
           ops.convert_to_tensor(delta, dtype=self.dtype),
           name=name)
-    if read_value:
-      return self._read_variable_op()
-    return assign_sub_op
+    return self._read_variable_op() if read_value else assign_sub_op
 
   def get(self):
     return self._primary_var
@@ -212,10 +203,7 @@ class ReplicatedVariable(VariableBase):
     # pylint: enable=protected-access
     if dtype is not None and dtype != self.dtype:
       return NotImplemented
-    if as_ref:
-      return self.handle
-    else:
-      return self.read_value()
+    return self.handle if as_ref else self.read_value()
 
 
 # Register a conversion function which reads the value of the variable,

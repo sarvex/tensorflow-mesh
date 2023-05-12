@@ -62,19 +62,21 @@ class FactorizedVocabEmbedding(object):
         vocab_dim=vocab_dim,
         output_dim=self._inner_dim,
         variable_dtype=variable_dtype,
-        name="{}1".format(name),
+        name=f"{name}1",
         ensemble_dim=ensemble_dim,
         initializer=tf.random_normal_initializer(
-            stddev=inner_dimension_size**-0.25))
+            stddev=inner_dimension_size**-0.25),
+    )
     self._factor2 = mtf.layers.embedding_weights(
         mesh=mesh,
         vocab_dim=self._inner_dim,
         output_dim=output_dim,
         variable_dtype=variable_dtype,
-        name="{}2".format(name),
+        name=f"{name}2",
         ensemble_dim=ensemble_dim,
         initializer=tf.random_normal_initializer(
-            stddev=inner_dimension_size**-0.25))
+            stddev=inner_dimension_size**-0.25),
+    )
 
   def ids_to_embedding(self, ids, context):
     del context
@@ -192,8 +194,8 @@ class AdaptiveVocabEmbedding(object):
     token_counts = [cluster["token_count"] for cluster in clusters]
     if sum(token_counts) != vocab_dim.size:
       raise ValueError(
-          "The cluster token counts {} do not sum to the vocab size {}.".format(
-              token_counts, vocab_dim.size))
+          f"The cluster token counts {token_counts} do not sum to the vocab size {vocab_dim.size}."
+      )
 
     self._clusters = []
     start_token_id = 0
@@ -210,17 +212,19 @@ class AdaptiveVocabEmbedding(object):
             vocab_dim=cluster_vocab_dim,
             output_dim=output_dim,
             variable_dtype=variable_dtype,
-            name="{}_{}".format(name, i),
-            ensemble_dim=ensemble_dim)
+            name=f"{name}_{i}",
+            ensemble_dim=ensemble_dim,
+        )
       else:
         cluster_embedding = FactorizedVocabEmbedding(
             mesh=mesh,
             vocab_dim=cluster_vocab_dim,
             output_dim=output_dim,
             variable_dtype=variable_dtype,
-            name="{}_{}".format(name, i),
+            name=f"{name}_{i}",
             ensemble_dim=ensemble_dim,
-            inner_dimension_size=embedding_size)
+            inner_dimension_size=embedding_size,
+        )
       self._clusters.append(
           _Cluster(
               embedding=cluster_embedding,
@@ -286,7 +290,7 @@ class MixtureOfSoftmaxes(object):
     """
     self._vocab_dim = vocab_dim
     self._output_dim = output_dim
-    self._copy_output_dim = mtf.Dimension("_{}_copy".format(output_dim.name),
+    self._copy_output_dim = mtf.Dimension(f"_{output_dim.name}_copy",
                                           output_dim.size)
     self._components_dim = mtf.Dimension("softmax_components", num_softmaxes)
 
@@ -295,23 +299,26 @@ class MixtureOfSoftmaxes(object):
         vocab_dim=vocab_dim,
         output_dim=output_dim,
         variable_dtype=variable_dtype,
-        name="{}_embedding_weights".format(name),
-        ensemble_dim=ensemble_dim)
+        name=f"{name}_embedding_weights",
+        ensemble_dim=ensemble_dim,
+    )
     self._mixture_weights = mtf.layers.embedding_weights(
         mesh=mesh,
         vocab_dim=self._components_dim,
         output_dim=output_dim,
         variable_dtype=variable_dtype,
-        name="{}_mixture_weights".format(name),
-        ensemble_dim=ensemble_dim)
+        name=f"{name}_mixture_weights",
+        ensemble_dim=ensemble_dim,
+    )
     self._context_weights = mtf.layers.embedding_weights(
         mesh=mesh,
         vocab_dim=self._copy_output_dim,
         output_dim=output_dim,
         variable_dtype=variable_dtype,
-        name="{}_context_weights".format(name),
+        name=f"{name}_context_weights",
         ensemble_dim=([ensemble_dim] if ensemble_dim else []) +
-        [self._components_dim])
+        [self._components_dim],
+    )
 
   def ids_to_embedding(self, ids: mtf.Tensor, context) -> mtf.Tensor:
     del context
@@ -428,7 +435,7 @@ class Mixtape(object):
     self._rare_vocab_dim = mtf.Dimension(
         vocab_dim.name, vocab_dim.size - self._frequent_vocab_dim.size)
     self._output_dim = output_dim
-    self._copy_output_dim = mtf.Dimension("_{}_copy".format(output_dim.name),
+    self._copy_output_dim = mtf.Dimension(f"_{output_dim.name}_copy",
                                           output_dim.size)
     self._pre_gates_dim = mtf.Dimension("gates", 3)
     self._gates_dim = mtf.Dimension("gates", 4)
@@ -440,57 +447,65 @@ class Mixtape(object):
         vocab_dim=vocab_dim,
         output_dim=output_dim,
         variable_dtype=variable_dtype,
-        name="{}_embedding_weights".format(name),
-        ensemble_dim=ensemble_dim)
+        name=f"{name}_embedding_weights",
+        ensemble_dim=ensemble_dim,
+    )
     ensemble_dims = [ensemble_dim] if ensemble_dim else []
     self._context_weights = mtf.layers.embedding_weights(
         mesh=mesh,
         vocab_dim=self._copy_output_dim,
         output_dim=output_dim,
         variable_dtype=variable_dtype,
-        name="{}_context_weights".format(name),
-        ensemble_dim=ensemble_dims + [self._gates_dim])
+        name=f"{name}_context_weights",
+        ensemble_dim=ensemble_dims + [self._gates_dim],
+    )
     self._context_weights_bias = mtf.get_variable(
         mesh,
-        name="{}_context_weights_bias".format(name),
+        name=f"{name}_context_weights_bias",
         shape=mtf.Shape(ensemble_dims + [self._gates_dim, output_dim]),
         dtype=variable_dtype,
-        initializer=tf.zeros_initializer())
+        initializer=tf.zeros_initializer(),
+    )
 
     self._prior_weights = mtf.layers.embedding_weights(
         mesh=mesh,
         vocab_dim=self._gate_embedding_dim,
         output_dim=output_dim,
         variable_dtype=variable_dtype,
-        name="{}_prior_weights".format(name),
-        ensemble_dim=ensemble_dims + [self._pre_gates_dim])
+        name=f"{name}_prior_weights",
+        ensemble_dim=ensemble_dims + [self._pre_gates_dim],
+    )
     self._prior_weights_bias = mtf.get_variable(
         mesh,
-        name="{}_prior_weights_bias".format(name),
+        name=f"{name}_prior_weights_bias",
         shape=mtf.Shape(ensemble_dims +
                         [self._pre_gates_dim, self._gate_embedding_dim]),
         dtype=variable_dtype,
-        initializer=tf.zeros_initializer())
+        initializer=tf.zeros_initializer(),
+    )
     self._prior_vocab_vector = mtf.get_variable(
         mesh,
-        name="{}_prior_vocab_vector".format(name),
+        name=f"{name}_prior_vocab_vector",
         shape=mtf.Shape(ensemble_dims +
                         [self._frequent_vocab_dim, self._gate_embedding_dim]),
         dtype=variable_dtype,
-        initializer=tf.random_normal_initializer())
+        initializer=tf.random_normal_initializer(),
+    )
     self._prior_gates_vector = mtf.get_variable(
         mesh,
-        name="{}_prior_gates_vector".format(name),
+        name=f"{name}_prior_gates_vector",
         shape=mtf.Shape(ensemble_dims + [self._pre_gates_dim, output_dim]),
         dtype=variable_dtype,
-        initializer=tf.random_normal_initializer())
+        initializer=tf.random_normal_initializer(),
+    )
     self._prior_bias = mtf.get_variable(
         mesh,
-        name="{}_prior_bias".format(name),
+        name=f"{name}_prior_bias",
         shape=mtf.Shape(ensemble_dims +
                         [self._frequent_vocab_dim, self._pre_gates_dim]),
         dtype=variable_dtype,
-        initializer=tf.random_normal_initializer())
+        initializer=tf.random_normal_initializer(),
+    )
 
   def ids_to_embedding(self, ids: mtf.Tensor, context) -> mtf.Tensor:
     del context

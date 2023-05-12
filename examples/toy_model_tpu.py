@@ -92,13 +92,11 @@ class ToyModelInput(object):
     # computed according to the input pipeline deployment. See
     # `tf.estimator.tpu.RunConfig` for details.
     batch_size = params['batch_size']
-    logging.info('call ToyModelInput() with batch size {}'.format(batch_size))
+    logging.info(f'call ToyModelInput() with batch size {batch_size}')
 
     ds = Dataset.from_tensor_slices((self._images, self._labels)).repeat()
 
-    dataset = ds.batch(batch_size, drop_remainder=True).prefetch(2)
-
-    return dataset
+    return ds.batch(batch_size, drop_remainder=True).prefetch(2)
 
 
 def toy_model(features, mesh):
@@ -155,7 +153,7 @@ def model_fn(features, labels, mode, params):
     num_hosts = ctx.num_hosts
     host_placement_fn = ctx.tpu_host_placement_function
     device_list = [host_placement_fn(host_id=t) for t in range(num_hosts)]
-    tf.logging.info('device_list = %s' % device_list,)
+    tf.logging.info(f'device_list = {device_list}')
     # TODO(ylc): Better estimation of replica cache size?
     replica_cache_size = 300 * 1000000  # 300M per replica
     # Worker 0 caches all the TPU binaries.

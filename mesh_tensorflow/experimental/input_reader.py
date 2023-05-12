@@ -88,9 +88,9 @@ def _host_device_to_id(device_str):
 def _host_id_to_tf_device(host_id, external_worker):
   assert isinstance(host_id, int)
   if external_worker:
-    return "/job:tpu_worker/task:{}/device:CPU:0".format(host_id)
+    return f"/job:tpu_worker/task:{host_id}/device:CPU:0"
   else:
-    return "/task:{}/device:CPU:0".format(host_id)
+    return f"/task:{host_id}/device:CPU:0"
 
 
 class SubBatchSlicer(object):
@@ -203,15 +203,9 @@ class ProcessDevices(object):
     self._num_cores_per_host = self.num_cores // self._num_hosts
     assert self.num_cores == self._num_hosts * self._num_cores_per_host
 
-    tf.logging.info("Process Devices "
-                    "ordered_ordinals: {}, "
-                    "ordered_tpus: {}, "
-                    "ordered_hosts: {}, "
-                    "host_id_to_its_pnums: {}.".format(
-                        self.ordered_ordinals,
-                        self.ordered_tpus,
-                        self.ordered_hosts,
-                        self.host_id_to_its_pnums))
+    tf.logging.info(
+        f"Process Devices ordered_ordinals: {self.ordered_ordinals}, ordered_tpus: {self.ordered_tpus}, ordered_hosts: {self.ordered_hosts}, host_id_to_its_pnums: {self.host_id_to_its_pnums}."
+    )
 
   @property
   def ordered_ordinals(self):
@@ -456,7 +450,7 @@ class SimdMeshImplInputReader(object):
           pnum_array_ref[idx] = pnum
           break
 
-    tf.logging.info("MTF pnum_map: {}".format(pnum_map))
+    tf.logging.info(f"MTF pnum_map: {pnum_map}")
     assert _NONE_PNUM not in pnum_map
     return pnum_map
 
@@ -550,6 +544,4 @@ class PlacementMeshImplInputReader(object):
         image, self._mtf_input_shapes[0])
     label_laid_out = self._placement_mesh_impl.make_slices(
         label, self._mtf_input_shapes[1])
-    computation = model_fn(image_laid_out, label_laid_out)
-
-    return computation
+    return model_fn(image_laid_out, label_laid_out)

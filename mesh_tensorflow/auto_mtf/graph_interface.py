@@ -219,10 +219,7 @@ class GraphInterface(object):
       a string or None, representing the device name.
     """
     tensor = self._name_to_tensor(tensor_name)
-    if isinstance(tensor, tf.Tensor):
-      return tensor.device
-    else:  # mtf.Tensor
-      return None
+    return tensor.device if isinstance(tensor, tf.Tensor) else None
 
   def is_tensor_on_canonical_device(self, tensor_name):
     """Whether the tensor is on the first (canonical) device.
@@ -251,10 +248,7 @@ class GraphInterface(object):
       a string or None, representing the device name.
     """
     operation = self._name_to_operation(operation_name)
-    if isinstance(operation, tf.Operation):
-      return operation.device
-    else:  # mtf.Operation
-      return None
+    return operation.device if isinstance(operation, tf.Operation) else None
 
   def get_tensor_mtf_dimension_names(self, tensor_name):
     """The Mesh TensorFlow dimensions associated with a tensor.
@@ -266,10 +260,7 @@ class GraphInterface(object):
       a [string], the names of Mesh TensorFlow dimensions.
     """
     tensor = self._name_to_tensor(tensor_name)
-    if isinstance(tensor, mtf.Tensor):
-      return tensor.shape.dimension_names
-    else:  # tf.Tensor
-      return []
+    return tensor.shape.dimension_names if isinstance(tensor, mtf.Tensor) else []
 
   def get_operation_mtf_dimension_names(self, operation_name):
     """The Mesh TensorFlow dimensions associated with an operation.
@@ -420,8 +411,7 @@ class GraphInterface(object):
     elif isinstance(self._graph, mtf.Graph):
       return self._graph.operations
     else:
-      raise TypeError('Graph is not tf.Graph or mtf.Graph: {}'
-                      .format(type(self._graph)))
+      raise TypeError(f'Graph is not tf.Graph or mtf.Graph: {type(self._graph)}')
 
   def _initialize_operation_name_to_id(self):
     """Initializer for _operation_name_to_id.
@@ -429,10 +419,7 @@ class GraphInterface(object):
     Returns:
       a {string: int}, mapping operation names to their index in _operations.
     """
-    operation_name_to_id = {}
-    for i, operation in enumerate(self._operations):
-      operation_name_to_id[operation.name] = i
-    return operation_name_to_id
+    return {operation.name: i for i, operation in enumerate(self._operations)}
 
   def _initialize_tensor_name_to_ids(self):
     """Initializer for _tensor_name_to_ids.
@@ -454,8 +441,7 @@ class GraphInterface(object):
       a tf.Tensor or mtf.Tensor
     """
     for operation in self._operations:
-      for tensor in operation.outputs:
-        yield tensor
+      yield from operation.outputs
 
   def _name_to_operation(self, operation_name):
     """The operation with the given name.

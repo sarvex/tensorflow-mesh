@@ -307,8 +307,8 @@ class UTLayerStack(transformer.TransformerLayer):
 
     if self.add_step_timing_signal:
       x = self.add_step_timing_signal_func(context, x, step)
-    if ((self.add_position_timing_signal or self.add_position_timing_signal) and
-        self.add_or_concat_timing_signal == "concat"):
+    if (self.add_position_timing_signal
+        and self.add_or_concat_timing_signal == "concat"):
       # linear projection to the original dimension of x
       new_dims = x.shape.dims[:-1] + [original_channel_size]
       x = mtf.layers.dense(
@@ -328,8 +328,9 @@ class UTLayerStack(transformer.TransformerLayer):
         with tf.variable_scope(layer.__class__.__name__):
           y = layer.call(context, norm_x)
           if y.shape != x.shape:
-            raise ValueError("Layer %s returned misshaped output x=%s y=%s" %
-                             (layer.__class__.__name__, x, y))
+            raise ValueError(
+                f"Layer {layer.__class__.__name__} returned misshaped output x={x} y={y}"
+            )
           if self.use_gated_transformer:
             y = self.gating(context, x, y, mask)
         x += self._dropout(context, y)
@@ -357,8 +358,7 @@ class UTLayerStack(transformer.TransformerLayer):
           ffn_layer_type=gate_ffn_layer,
           activation=mtf.sigmoid,
           preprocess=True)
-      new_state = x * carry_gate + transformed_x * transform_gate
-      return new_state
+      return x * carry_gate + transformed_x * transform_gate
     elif self.gating_type == "gru":
       gate_inputs = [x, transformed_x]
       transition_function_update_gate = self.ffn_layer_multi_inputs(
@@ -386,10 +386,8 @@ class UTLayerStack(transformer.TransformerLayer):
           activation=mtf.sigmoid,
           preprocess=True)
 
-      transition_function_output = (
-          (1 - transition_function_update_gate) * transformed_x +
-          transition_function_update_gate * transition_function_candidate)
-      return transition_function_output
+      return ((1 - transition_function_update_gate) * transformed_x +
+              transition_function_update_gate * transition_function_candidate)
 
   def ut_basic(self, context, x, mask):
     def ut_function(x, step):
@@ -606,7 +604,7 @@ class UTLayerStack(transformer.TransformerLayer):
       )
 
     else:
-      raise ValueError("Unknown ffn_layer type: %s" % ffn_layer_type)
+      raise ValueError(f"Unknown ffn_layer type: {ffn_layer_type}")
 
     if postprocess:
       output = self._layer_norm(context, (output * mask) if mask else output)

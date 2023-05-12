@@ -218,8 +218,9 @@ class DecoderConvolutionalLayer(transformer.TransformerLayer):
 def _pad_channels_dim(tensor, size):
   channels_dim = tensor.shape.dims[-1]
   if channels_dim.size > size:
-    raise ValueError("Cannot pad to size of {} when the original size "
-                     "of {} is bigger".format(size, channels_dim.size))
+    raise ValueError(
+        f"Cannot pad to size of {size} when the original size of {channels_dim.size} is bigger"
+    )
   elif channels_dim.size == size:
     return tensor
   else:

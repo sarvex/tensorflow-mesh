@@ -74,7 +74,7 @@ class SimdMeshImpl(mtf.MeshImpl):
     """
     super(SimdMeshImpl, self).__init__(shape, layout)
     if devices is not None:
-      tf.logging.warning("SimdMeshImpl ignoring devices %s" % devices)
+      tf.logging.warning(f"SimdMeshImpl ignoring devices {devices}")
     self._device_assignment = device_assignment
     tf.logging.info("SimdMeshImpl init: {0} {1}".format(shape, layout))
     tf.logging.info("Device Assignment: {0}".format(device_assignment))
@@ -83,15 +83,15 @@ class SimdMeshImpl(mtf.MeshImpl):
       logical_to_physical = list(range(self.size))
     if sorted(logical_to_physical) != list(range(self.size)):
       raise ValueError(
-          "logical_to_physical must be a permutation on range(shape.size)"
-          " shape=%s logical_to_physical=%s" % (shape, logical_to_physical))
+          f"logical_to_physical must be a permutation on range(shape.size) shape={shape} logical_to_physical={logical_to_physical}"
+      )
     self._logical_to_physical = logical_to_physical
     self._physical_to_logical = [None] * self.size
     for logical, physical in enumerate(self._logical_to_physical):
       self._physical_to_logical[physical] = logical
-    self._pnum_tensor = None
     self.graph_device_function_stacks = []
     self.copy_master_to_slice_ops = []
+    self._pnum_tensor = None
     self._allreduce_in_bfloat16_max_group_size = (
         allreduce_in_bfloat16_max_group_size)
 
@@ -318,10 +318,7 @@ class SimdMeshImpl(mtf.MeshImpl):
       if group not in partitioning:
         partitioning[group] = []
       partitioning[group].append(self.l2p(logical_pnum))
-    group_assignment = []
-    for group, physical_pnums in partitioning.items():
-      group_assignment.append(physical_pnums)
-    return group_assignment
+    return list(partitioning.values())
 
   def allreduce(self, x, mesh_axes, reduction_fn_string):
     """Grouped allreduce, (summed across the given dimensions).
@@ -349,7 +346,7 @@ class SimdMeshImpl(mtf.MeshImpl):
         cast_to_float32 = (
             group_size > self._allreduce_in_bfloat16_max_group_size)
       else:
-        tf.logging.info("Casting %s to float32 for allreduce" % tf_in.dtype)
+        tf.logging.info(f"Casting {tf_in.dtype} to float32 for allreduce")
         cast_to_float32 = True
       if cast_to_float32:
         tf_in = tf.cast(tf_in, tf.float32)
@@ -476,16 +473,15 @@ class SimdMeshImpl(mtf.MeshImpl):
 
     if tensor_layout.is_fully_replicated:
       return self.LaidOutTensor([tf_tensor])
-    else:
-      slice_shape = self.slice_shape(tensor_shape)
-      slice_begins = [
-          self.slice_begin(tensor_shape, pnum) for pnum in xrange(self.size)
-      ]
-      slice_begins_tensor = tf.stack(slice_begins)
-      # slice on source device
-      selected_slice_begin = tf.gather(slice_begins_tensor, self.pnum_tensor)
-      return self.LaidOutTensor(
-          [tf.slice(tf_tensor, selected_slice_begin, slice_shape)])
+    slice_shape = self.slice_shape(tensor_shape)
+    slice_begins = [
+        self.slice_begin(tensor_shape, pnum) for pnum in xrange(self.size)
+    ]
+    slice_begins_tensor = tf.stack(slice_begins)
+    # slice on source device
+    selected_slice_begin = tf.gather(slice_begins_tensor, self.pnum_tensor)
+    return self.LaidOutTensor(
+        [tf.slice(tf_tensor, selected_slice_begin, slice_shape)])
 
   def slicewise(self, fn, *inputs):
     """Execute a function in parallel on all slices.
@@ -503,7 +499,7 @@ class SimdMeshImpl(mtf.MeshImpl):
         x.one_slice if isinstance(x, self.LaidOutTensor) else x
         for x in inputs])
     if isinstance(ret, tuple):
-      return tuple([self.LaidOutTensor([t]) for t in ret])
+      return tuple(self.LaidOutTensor([t]) for t in ret)
     else:
       return self.LaidOutTensor([ret])
 
@@ -618,12 +614,9 @@ def _ring_2d(m, n):
     return [(i % m, i // m) for i in range(n * m)]
   ret = [(0, 0)]
   for i in range(m // 2):
-    for j in range(1, n):
-      ret.append((2 * i, j))
-    for j in range(n-1, 0, -1):
-      ret.append((2 * i + 1, j))
-  for i in range(m-1, 0, -1):
-    ret.append((i, 0))
+    ret.extend((2 * i, j) for j in range(1, n))
+    ret.extend((2 * i + 1, j) for j in range(n-1, 0, -1))
+  ret.extend((i, 0) for i in range(m-1, 0, -1))
   return ret
 
 
@@ -718,10 +711,10 @@ def _logical_to_physical_v1(
         "- got sizes_and_strides=%s physical_shape=%s"
         % (sizes_and_strides, physical_shape))
   dimension_layouts = [fn_1d(l, physical_shape) for l in sizes_and_strides]
-  tf.logging.info("physical_shape: %s" % physical_shape)
-  tf.logging.info("sizes_and_strides: %s" % sizes_and_strides)
+  tf.logging.info(f"physical_shape: {physical_shape}")
+  tf.logging.info(f"sizes_and_strides: {sizes_and_strides}")
   for i, l in enumerate(dimension_layouts):
-    tf.logging.info("dimension_layout %s: %s" % (i, l))
+    tf.logging.info(f"dimension_layout {i}: {l}")
   ret = []
   for logical_pnum in range(n):
     logical_coordinates = mtf.pnum_to_processor_coordinates(
@@ -763,9 +756,9 @@ class HierarchicalTiling(object):
       physical_shape: a list of integers
     """
     self._names = [p[0] for p in spec]
-    logical_ndims = len(spec)
     physical_ndims = len(physical_shape)
     projected_shapes = [p[1] for p in spec]
+    logical_ndims = len(spec)
     if logical_ndims > 0 and projected_shapes[0] is None:
       # fill in missing value
       projected_shapes[0] = list(physical_shape)
@@ -776,14 +769,13 @@ class HierarchicalTiling(object):
     products = [1] * physical_ndims
     sizes_and_strides = []
     for s in reversed(projected_shapes):
-      sizes_and_strides.append(
-          [(size, stride) for size, stride in zip(s, products)])
+      sizes_and_strides.append(list(zip(s, products)))
       for i, x in enumerate(s):
         products[i] *= x
     if products != physical_shape:
-      raise ValueError("mesh spec multiplies to the wrong size"
-                       "spec=%s physical_shape=%s products=%s" %
-                       (spec, physical_shape, products))
+      raise ValueError(
+          f"mesh spec multiplies to the wrong sizespec={spec} physical_shape={physical_shape} products={products}"
+      )
     sizes_and_strides.reverse()
     self._physical_coordinates = _logical_to_physical_v1(
         sizes_and_strides, physical_shape)
@@ -876,13 +868,13 @@ def auto_logical_to_physical_tpu(logical_shape,
   if len(physical_shape) == 4:
     physical_shape = physical_shape_3d_from_topology_proto_4d(physical_shape)
 
-  tf.logging.info("auto_logical_to_physical_tpu "
-                  "logical_shape=%s physical_shape=%s" %
-                  (logical_shape, physical_shape))
+  tf.logging.info(
+      f"auto_logical_to_physical_tpu logical_shape={logical_shape} physical_shape={physical_shape}"
+  )
   if mtf.list_product(logical_shape) != mtf.list_product(physical_shape):
     raise ValueError(
-        "physical and logical shapes must have the same product "
-        "physical_shape=%s logical_shape=%s" % (physical_shape, logical_shape))
+        f"physical and logical shapes must have the same product physical_shape={physical_shape} logical_shape={logical_shape}"
+    )
   # drop logical dimensions of size 1
   logical_shape = [i for i in logical_shape if i != 1]
   num_cores = mtf.list_product(logical_shape)
@@ -954,19 +946,18 @@ def auto_logical_to_physical_tpu(logical_shape,
           tiles_ring[logical_tile_num][1] * t1 +
           tile_logical_to_physical[logical_pos_in_tile][1],
           tile_logical_to_physical[logical_pos_in_tile][2]))
-  tf.logging.info("auto_logical_to_physical_tpu logical_to_physical = %s"
-                  % logical_to_physical)
+  tf.logging.info(
+      f"auto_logical_to_physical_tpu logical_to_physical = {logical_to_physical}"
+  )
   if return_coordinates:
     return logical_to_physical
-  else:
-    if FLAGS.logical_cores_per_chip > 1:
-      return [
-          mtf.processor_coordinates_to_pnum(physical_shape, coord)
-          for coord in logical_to_physical
-      ]
-    else:
-      # check device_assignment
-      if device_assignment is None:
-        raise ValueError("physical_shape or device_assignment unset")
-      return mtf.processor_coordinates_to_pnum_map_nd(
-          physical_shape, logical_to_physical, device_assignment)
+  if FLAGS.logical_cores_per_chip > 1:
+    return [
+        mtf.processor_coordinates_to_pnum(physical_shape, coord)
+        for coord in logical_to_physical
+    ]
+  # check device_assignment
+  if device_assignment is None:
+    raise ValueError("physical_shape or device_assignment unset")
+  return mtf.processor_coordinates_to_pnum_map_nd(
+      physical_shape, logical_to_physical, device_assignment)

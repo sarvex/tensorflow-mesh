@@ -63,22 +63,20 @@ def print_solution(model, solver):
       continue
     variable_name = model_proto.variables[var_index].name
     if var_index in variables_in_objective_map:
-      coefficient = variables_in_objective_map[var_index]
-      if coefficient:
+      if coefficient := variables_in_objective_map[var_index]:
         if maximization:
           coefficient *= -1
         if coefficient < 0:
-          variables_in_objective.append(' - {} * {}'.format(
-              -coefficient, variable_name))
+          variables_in_objective.append(f' - {-coefficient} * {variable_name}')
         elif coefficient > 0:
-          variables_in_objective.append(' + {} * {}'.format(
-              coefficient, variable_name))
-    variable_assignments.append('  {} = {}\n'.format(
-        variable_name, response_proto.solution[var_index]))
+          variables_in_objective.append(f' + {coefficient} * {variable_name}')
+    variable_assignments.append(
+        f'  {variable_name} = {response_proto.solution[var_index]}\n')
   print(''.join(variable_assignments), end='')
   # Strip the leading '+' if it exists.
   if variables_in_objective and variables_in_objective[0][1] == '+':
     variables_in_objective[0] = variables_in_objective[0][2:]
-  print('{}:{}'.format('Maximize' if maximization else 'Minimize',
-                       ''.join(variables_in_objective)))
-  print('Objective value: {}\n'.format(solver.ObjectiveValue()))
+  print(
+      f"{'Maximize' if maximization else 'Minimize'}:{''.join(variables_in_objective)}"
+  )
+  print(f'Objective value: {solver.ObjectiveValue()}\n')

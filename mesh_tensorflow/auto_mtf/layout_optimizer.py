@@ -180,14 +180,10 @@ class LayoutOptimizer(object):
         self._local_vars[mtf_dimension_set][name] = (
             self._model.NewBoolVar(name))
 
-    # Initialize memory variable. We need a crude upper bound on memory, so we
-    # use the total size of all tensors under the empty assignment.
-    # NOTE(joshuawang): This bound could be improved by factoring in the
-    # schedule.
-    memory_upper_bound = 0
-    for tensor_name in self._graph.get_all_tensor_names():
-      if self._graph.is_tensor_on_canonical_device(tensor_name):
-        memory_upper_bound += int(self._graph.get_tensor_size(tensor_name))
+    memory_upper_bound = sum(
+        int(self._graph.get_tensor_size(tensor_name))
+        for tensor_name in self._graph.get_all_tensor_names()
+        if self._graph.is_tensor_on_canonical_device(tensor_name))
     self._memory_var = self._model.NewIntVar(0, memory_upper_bound, "z")
 
   def _add_constraints(self):
@@ -312,8 +308,9 @@ class LayoutOptimizer(object):
         logging.warning("A potentially suboptimal solution was found.")
       else:
         logging.error("Solver returned status %d.", status)
-        raise SolverError("The solver could not solve the problem and returned "
-                          "status {}.".format(status))
+        raise SolverError(
+            f"The solver could not solve the problem and returned status {status}."
+        )
 
     # TODO(joshuawang): Verify the solver's solution.
     if print_solution:
@@ -321,14 +318,12 @@ class LayoutOptimizer(object):
 
     # Reconstruct layout from solution.
     layout = []
-    for mtf_dimension_name in (
-        self._layout_validator.splittable_mtf_dimension_names):
-      for mesh_dimension_name in (
-          self._layout_validator.mesh_dimension_name_to_size):
+    for mtf_dimension_name in self._layout_validator.splittable_mtf_dimension_names:
+      for mesh_dimension_name in self._layout_validator.mesh_dimension_name_to_size:
         value = self._cp_solver.Value(self._global_vars[(mtf_dimension_name,
                                                          mesh_dimension_name)])
         if value:  # Value is integer.
-          layout.append(mtf_dimension_name + ":" + mesh_dimension_name)
+          layout.append(f"{mtf_dimension_name}:{mesh_dimension_name}")
 
     layout.sort()
     return ";".join(layout)
@@ -357,15 +352,14 @@ class LayoutOptimizer(object):
           logging.warning("Skipping unsplittable dimension %s.",
                           mtf_dimension_name)
 
-    tensor_memory = {}  # {string: float}, size of each tensor under our layout
-    for tensor_name in self._graph.get_all_tensor_names():
-      if self._graph.is_tensor_on_canonical_device(tensor_name):
-        tensor_memory[tensor_name] = self._graph.get_tensor_size(
-            tensor_name, layout_dict,
-            self._layout_validator.mesh_dimension_name_to_size)
-      else:
-        tensor_memory[tensor_name] = 0.0
-
+    tensor_memory = {
+        tensor_name: self._graph.get_tensor_size(
+            tensor_name,
+            layout_dict,
+            self._layout_validator.mesh_dimension_name_to_size,
+        ) if self._graph.is_tensor_on_canonical_device(tensor_name) else 0.0
+        for tensor_name in self._graph.get_all_tensor_names()
+    }
     peak_memory_usage = 0.0
     for tensor_names in self._get_memory_contents():
       memory_usage = 0.0
@@ -385,7 +379,7 @@ def _global_var_name(splittable_dimension, mesh_dimension):
   Returns:
     A string, the variable name.
   """
-  return "x_({}:{})".format(splittable_dimension, mesh_dimension)
+  return f"x_({splittable_dimension}:{mesh_dimension})"
 
 
 def _local_var_name(splittable_dimensions, assignment):
@@ -402,10 +396,9 @@ def _local_var_name(splittable_dimensions, assignment):
   assignment_string = []
   for splittable in sorted(splittable_dimensions):
     if splittable in assignment:
-      assignment_string.append("{}:{}".format(splittable,
-                                              assignment[splittable]))
+      assignment_string.append(f"{splittable}:{assignment[splittable]}")
     else:
-      assignment_string.append("{}".format(splittable))
+      assignment_string.append(f"{splittable}")
   return "y_(" + ",".join(assignment_string) + ")"
 
 
@@ -425,7 +418,7 @@ def _generate_assignments(splittable_dimensions, mesh_dimension_to_size):
       1 + min(len(splittable_dimensions), len(mesh_dimension_to_size))):
     for s_dims_chosen in itertools.combinations(splittable_dimensions,
                                                 assignment_size):
-      for m_dims_chosen in itertools.permutations(mesh_dimension_to_size,
-                                                  assignment_size):
-        assignments.append(dict(zip(s_dims_chosen, m_dims_chosen)))
+      assignments.extend(
+          dict(zip(s_dims_chosen, m_dims_chosen)) for m_dims_chosen in
+          itertools.permutations(mesh_dimension_to_size, assignment_size))
   return assignments

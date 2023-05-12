@@ -41,12 +41,12 @@ class UtilsTest(tf.test.TestCase):
 
       for i in xrange(5):
         # Each variable takes 400 Bytes, and will be placed from cpu:1.
-        mtf.get_variable(mesh, 'w{}'.format(i), [hidden_dim, output_dim])
+        mtf.get_variable(mesh, f'w{i}', [hidden_dim, output_dim])
 
       for i in xrange(5):
-        var = g.get_tensor_by_name('w{}:0'.format(i))
+        var = g.get_tensor_by_name(f'w{i}:0')
         device = (i + 1) % len(device_list)
-        self.assertEqual('cpu:{}'.format(device), var.device)
+        self.assertEqual(f'cpu:{device}', var.device)
 
 
 if __name__ == '__main__':

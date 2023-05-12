@@ -81,9 +81,9 @@ def download(directory, filename):
     return filepath
   if not tf.gfile.Exists(directory):
     tf.gfile.MakeDirs(directory)
-  url = 'http://yann.lecun.com/exdb/mnist/' + filename + '.gz'
+  url = f'http://yann.lecun.com/exdb/mnist/{filename}.gz'
   _, zipped_filepath = tempfile.mkstemp(suffix='.gz')
-  print('Downloading %s to %s' % (url, zipped_filepath))
+  print(f'Downloading {url} to {zipped_filepath}')
   urllib.request.urlretrieve(url, zipped_filepath)
   with gzip.open(zipped_filepath, 'rb') as f_in, \
       tf.gfile.Open(filepath, 'wb') as f_out:

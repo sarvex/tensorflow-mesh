@@ -476,7 +476,7 @@ def transformer_moe_layer_v1(
         num_microbatches=num_microbatches,
         token_embeddings=token_embeddings)
   else:
-    raise ValueError("unknown hparams.moe_gating=%s" % hparams.moe_gating)
+    raise ValueError(f"unknown hparams.moe_gating={hparams.moe_gating}")
 
   expert_inputs = mtf.einsum([inputs, dispatch_tensor],
                              mtf.Shape([
@@ -699,7 +699,7 @@ def transformer_moe_layer_v2(
       b1.size * l.size, hparams.moe_group_size,
       mtf.tensor_dim_to_mesh_dim_size(layout, mesh_shape, b1))
   g1 = mtf.Dimension(b1.name, num_groups)
-  g = mtf.Dimension(b1.name + "_unsplit", g1.size)
+  g = mtf.Dimension(f"{b1.name}_unsplit", g1.size)
   s = mtf.Dimension("group_size_x", group_size)
 
   # Each sequence sends (at most?) expert_capacity positions to each expert.
@@ -721,7 +721,7 @@ def transformer_moe_layer_v2(
       mtf.tensor_dim_to_mesh_dim_size(layout, mesh_shape, a0))
   t = mtf.Dimension("group_size_y", group_size)
   h0 = mtf.Dimension(a0.name, num_groups)
-  h = mtf.Dimension(a0.name + "_unsplit", h0.size)
+  h = mtf.Dimension(f"{a0.name}_unsplit", h0.size)
 
   expert_capacity = min(
       t.size,
@@ -751,7 +751,7 @@ def transformer_moe_layer_v2(
         importance=nonpadding,
         num_microbatches=num_microbatches)
   else:
-    raise ValueError("unknown hparams.moe_gating=%s" % hparams.moe_gating)
+    raise ValueError(f"unknown hparams.moe_gating={hparams.moe_gating}")
 
   # Now create expert_inputs based on the assignments.
   # put num_experts dimension first to make split easier in alltoall
@@ -792,7 +792,7 @@ def transformer_moe_layer_v2(
         name="inner_gating",
         num_microbatches=num_microbatches)
   else:
-    raise ValueError("unknown hparams.moe_gating=%s" % hparams.moe_gating)
+    raise ValueError(f"unknown hparams.moe_gating={hparams.moe_gating}")
 
   # Now create expert_inputs based on the assignments.
   # put num_experts dimension first to make split easier in alltoall
@@ -845,8 +845,9 @@ def _stochastically_use_non_top_expert(gate_logits, experts_dim, hparams):
   """With a specified probability use the second place or lower experts."""
   # With the specified probability use the second place expert in place of the
   # top expert.
-  tf.logging.info("Using second place expert with prob: {}".format(
-      hparams.moe_use_second_place_expert_prob))
+  tf.logging.info(
+      f"Using second place expert with prob: {hparams.moe_use_second_place_expert_prob}"
+  )
   _, top_expert_index = mtf.top_1(gate_logits, reduced_dim=experts_dim)
   top_expert_mask = mtf.one_hot(
       top_expert_index, experts_dim, dtype=gate_logits.dtype)
@@ -862,8 +863,9 @@ def _stochastically_use_non_top_expert(gate_logits, experts_dim, hparams):
 
   # If a temperature is specified sample from the remaining N-1 experts.
   if hparams.moe_use_second_place_expert_prob_temp is not None:
-    tf.logging.info("Expert second place temp: {}".format(
-        hparams.moe_use_second_place_expert_prob_temp))
+    tf.logging.info(
+        f"Expert second place temp: {hparams.moe_use_second_place_expert_prob_temp}"
+    )
     # What expert should be used.
     second_expert_index = mtf.sample_with_temperature(
         second_place_gate_logits, experts_dim,
@@ -947,16 +949,16 @@ def _ntlb_gating(inputs,
       mtf.reduce_mean(density_1_proxy * density_1) *
       float(experts_dim.size * experts_dim.size))
   if num_microbatches and num_microbatches > 1:
-    tf.logging.info("Dividing load-balance loss by num_microbatches={}".format(
-        num_microbatches))
+    tf.logging.info(
+        f"Dividing load-balance loss by num_microbatches={num_microbatches}")
     loss /= num_microbatches
 
   # Add in the z_loss for router.
   if train and hparams.moe_z_loss is not None:
-    tf.logging.info("Using z_loss: {}".format(hparams.moe_z_loss))
+    tf.logging.info(f"Using z_loss: {hparams.moe_z_loss}")
     z_loss = _router_z_loss(gate_logits, experts_dim, num_microbatches,
                             importance)
-    mtf.scalar_summary(name + "/z_loss", z_loss)
+    mtf.scalar_summary(f"{name}/z_loss", z_loss)
     loss += (hparams.moe_z_loss * z_loss)
 
   # Logging
@@ -964,7 +966,7 @@ def _ntlb_gating(inputs,
     entropy = mtf.reduce_sum(
         -raw_gates * mtf.log(raw_gates + 1e-9), reduced_dim=experts_dim)
     batch_entropy = mtf.reduce_mean(entropy)
-    mtf.scalar_summary(name + "/entropy", batch_entropy)
+    mtf.scalar_summary(f"{name}/entropy", batch_entropy)
 
     mask_count_experts = mtf.reduce_sum(expert_mask, output_shape=[experts_dim])
     total_routed = mtf.reduce_sum(mask_count_experts)
@@ -1083,14 +1085,14 @@ def _switch_max_gating(
 
   raw_gates = mtf.softmax(gate_logits, reduced_dim=experts_dim)
 
-  if policy == "argmax" or policy == "input_dropout" or policy == "input_jitter":
+  if policy in ["argmax", "input_dropout", "input_jitter"]:
     expert_gate, expert_index = mtf.top_1(raw_gates, reduced_dim=experts_dim)
   elif policy == "sample":
     expert_index = mtf.sample_with_temperature(
         gate_logits, experts_dim, temperature=hparams.moe_switch_temperature)
     expert_gate = mtf.gather(raw_gates, expert_index, dim=experts_dim)
   else:
-    raise ValueError("Unknown Switch gating policy %s" % policy)
+    raise ValueError(f"Unknown Switch gating policy {policy}")
 
   expert_mask = mtf.one_hot(expert_index, experts_dim, dtype=raw_gates.dtype)
 
@@ -1107,16 +1109,16 @@ def _switch_max_gating(
       mtf.reduce_mean(density_1_proxy * density_1) *
       float(experts_dim.size * experts_dim.size))
   if num_microbatches and num_microbatches > 1:
-    tf.logging.info("Dividing load-balance loss by num_microbatches={}".format(
-        num_microbatches))
+    tf.logging.info(
+        f"Dividing load-balance loss by num_microbatches={num_microbatches}")
     loss /= num_microbatches
 
   # Add in the z_loss for router.
   if train and hparams.moe_z_loss is not None:
-    tf.logging.info("Using z_loss: {}".format(hparams.moe_z_loss))
+    tf.logging.info(f"Using z_loss: {hparams.moe_z_loss}")
     z_loss = _router_z_loss(gate_logits, experts_dim, num_microbatches,
                             importance)
-    mtf.scalar_summary(name + "/z_loss", z_loss)
+    mtf.scalar_summary(f"{name}/z_loss", z_loss)
     loss += (hparams.moe_z_loss * z_loss)
 
   # Logging
@@ -1124,7 +1126,7 @@ def _switch_max_gating(
     entropy = mtf.reduce_sum(-raw_gates * mtf.log(raw_gates + 1e-9),
                              reduced_dim=experts_dim)
     batch_entropy = mtf.reduce_mean(entropy)
-    mtf.scalar_summary(name + "/entropy", batch_entropy)
+    mtf.scalar_summary(f"{name}/entropy", batch_entropy)
     mtf.scalar_summary("expert_gate", mtf.reduce_mean(expert_gate))
 
     mask_count_experts = mtf.reduce_sum(expert_mask, output_shape=[experts_dim])

@@ -81,8 +81,7 @@ def main(_):
   command_filename = os.path.join(FLAGS.model_dir, "command")
   while tf.io.gfile.exists(command_filename):
     suffix += 1
-    command_filename = os.path.join(
-        FLAGS.model_dir, "command.{}".format(suffix))
+    command_filename = os.path.join(FLAGS.model_dir, f"command.{suffix}")
   with tf.io.gfile.GFile(command_filename, "w") as f:
     f.write(" ".join(sys.argv))
 

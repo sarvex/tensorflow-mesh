@@ -78,7 +78,6 @@ class PlacementMeshImpl(mtf.MeshImpl):
       self._mesh_impl = mesh_impl
       shape = variable.outputs[0].shape
       slice_shape = mesh_impl.slice_shape(shape)
-      base_name = variable.name
       if self.slice_is_master:
         slices = [variable.get_master()]
         self._laid_out_tensor = mesh_impl.LaidOutTensor(slices)
@@ -87,6 +86,7 @@ class PlacementMeshImpl(mtf.MeshImpl):
       else:
         slices = []
         slices_with_master_dtype = []
+        base_name = variable.name
         for pnum in xrange(mesh_impl.size):
           with tf.device(mesh_impl.devices[pnum]):
             slices.append(tf.get_variable(
@@ -171,11 +171,10 @@ class PlacementMeshImpl(mtf.MeshImpl):
     inputs = [x.tensor_list if isinstance(x, self.LaidOutTensor)
               else [x] * len(self.devices) for x in inputs]
     ret = mtf.parallel(self.devices, fn, *inputs)
-    if isinstance(ret[0], tuple):
-      ret = mtf.transpose_list_of_lists(ret)
-      return tuple([self.LaidOutTensor(t) for t in ret])
-    else:
+    if not isinstance(ret[0], tuple):
       return self.LaidOutTensor(ret)
+    ret = mtf.transpose_list_of_lists(ret)
+    return tuple(self.LaidOutTensor(t) for t in ret)
 
   def Print(self, x, data, message, **kwargs):  # pylint: disable=invalid-name
     """call tf.Print.
@@ -293,16 +292,15 @@ class PlacementMeshImpl(mtf.MeshImpl):
     x = x.to_laid_out_tensor()
     if len(mesh_axes) == self.ndims:
       return self.LaidOutTensor(collective(x.tensor_list, self._devices))
-    else:
-      groups = mtf.processor_groups(self.shape, mesh_axes)
-      ret = [None] * self.size
-      for g in groups:
-        inputs = [x.tensor_list[pnum] for pnum in g]
-        devices = [self._devices[pnum] for pnum in g]
-        reduced = collective(inputs, devices)
-        for pnum, y in zip(g, reduced):
-          ret[pnum] = y
-      return self.LaidOutTensor(ret)
+    groups = mtf.processor_groups(self.shape, mesh_axes)
+    ret = [None] * self.size
+    for g in groups:
+      inputs = [x.tensor_list[pnum] for pnum in g]
+      devices = [self._devices[pnum] for pnum in g]
+      reduced = collective(inputs, devices)
+      for pnum, y in zip(g, reduced):
+        ret[pnum] = y
+    return self.LaidOutTensor(ret)
 
   def random(self, shape, tf_fn, kwargs):
     """Call a random tf operation (e.g. tf.random.uniform).
@@ -320,8 +318,9 @@ class PlacementMeshImpl(mtf.MeshImpl):
     def my_fn(pnum):
       # seeds are necessary to make sure that slices that should have the
       # same values actually do have the same values.
-      seed = hash("%s,%s" % (op_seed, self.slice_begin(shape, pnum)))
+      seed = hash(f"{op_seed},{self.slice_begin(shape, pnum)}")
       return tf_fn(slice_shape, seed=seed, **kwargs)
+
     return self.slicewise(my_fn, self.laid_out_pnum())
 
   def laid_out_pnum(self):

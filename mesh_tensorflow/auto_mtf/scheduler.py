@@ -47,9 +47,9 @@ def minimize_peak_memory(graph, scheduler_alg):
   elif scheduler_alg == 'LIST':
     return _minimize_peak_memory_list(graph)
   else:
-    raise NotImplementedError('{} is not a scheduler algorithm. It should be '
-                              'one of NAIVE or LIST.'
-                              .format(scheduler_alg))
+    raise NotImplementedError(
+        f'{scheduler_alg} is not a scheduler algorithm. It should be one of NAIVE or LIST.'
+    )
 
 
 def _minimize_peak_memory_naive(graph):

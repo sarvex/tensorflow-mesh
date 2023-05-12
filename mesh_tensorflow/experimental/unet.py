@@ -326,44 +326,32 @@ class PostProcessor(object):
       tf.gfile.MakeDirs(pred_output_dir)
 
     if FLAGS.sampled_2d_slices:
-      with tf.gfile.Open(os.path.join(
-          pred_output_dir, 'pred_liver_{}_{}.npy'.format(
-              global_step, self._instance_i)), 'wb') as f:
+      with tf.gfile.Open(os.path.join(pred_output_dir, f'pred_liver_{global_step}_{self._instance_i}.npy'), 'wb') as f:
         np.save(f, pred_liver)
 
-      with tf.gfile.Open(os.path.join(
-          pred_output_dir, 'pred_lesion_{}_{}.npy'.format(
-              global_step, self._instance_i)), 'wb') as f:
+      with tf.gfile.Open(os.path.join(pred_output_dir, f'pred_lesion_{global_step}_{self._instance_i}.npy'), 'wb') as f:
         np.save(f, pred_lesion)
 
       if FLAGS.output_ground_truth:
-        with tf.gfile.Open(os.path.join(
-            pred_output_dir, 'label_{}_{}.npy'.format(
-                global_step, self._instance_i)), 'wb') as f:
+        with tf.gfile.Open(os.path.join(pred_output_dir, f'label_{global_step}_{self._instance_i}.npy'), 'wb') as f:
           np.save(f, label)
 
       self._instance_i += 1
     else:
       pred_liver = self._reshape_to_cubes(pred_liver)
       for ins_i, pred_liver_instance in enumerate(pred_liver):
-        with tf.gfile.Open(os.path.join(
-            pred_output_dir, 'pred_liver_{}_{}.npy'.format(
-                global_step, self._instance_i + ins_i)), 'wb') as f:
+        with tf.gfile.Open(os.path.join(pred_output_dir, f'pred_liver_{global_step}_{self._instance_i + ins_i}.npy'), 'wb') as f:
           np.save(f, pred_liver_instance)
 
       pred_lesion = self._reshape_to_cubes(pred_lesion)
       for ins_i, pred_lesion_instance in enumerate(pred_lesion):
-        with tf.gfile.Open(os.path.join(
-            pred_output_dir, 'pred_lesion_{}_{}.npy'.format(
-                global_step, self._instance_i + ins_i)), 'wb') as f:
+        with tf.gfile.Open(os.path.join(pred_output_dir, f'pred_lesion_{global_step}_{self._instance_i + ins_i}.npy'), 'wb') as f:
           np.save(f, pred_lesion_instance)
 
       if FLAGS.output_ground_truth:
         label = self._reshape_to_cubes(label)
         for ins_i, label_instance in enumerate(label):
-          with tf.gfile.Open(os.path.join(
-              pred_output_dir, 'label_{}_{}.npy'.format(
-                  global_step, self._instance_i + ins_i)), 'wb') as f:
+          with tf.gfile.Open(os.path.join(pred_output_dir, f'label_{global_step}_{self._instance_i + ins_i}.npy'), 'wb') as f:
             np.save(f, label_instance)
 
       self._instance_i += len(pred_liver)
@@ -378,8 +366,8 @@ class PostProcessor(object):
 
     if FLAGS.sampled_2d_slices:
       # Merge the results on 2d slices.
-      assert area_int.size % (FLAGS.ct_resolution - FLAGS.image_c + 1) == 0, (
-          'Wrong number of results: {}'.format(area_int.shape))
+      assert (area_int.size % (FLAGS.ct_resolution - FLAGS.image_c + 1) == 0
+              ), f'Wrong number of results: {area_int.shape}'
       area_int = area_int.reshape([-1, FLAGS.ct_resolution - FLAGS.image_c + 1])
       area_int = area_int.sum(axis=1)
       area_sum = area_sum.reshape([-1, FLAGS.ct_resolution - FLAGS.image_c + 1])
@@ -388,8 +376,7 @@ class PostProcessor(object):
     dice_per_case = (2 * area_int / (area_sum + 0.001)).mean()
     dice_global = 2 * area_int.sum() / (area_sum.sum() + 0.001)
     # pylint: disable=logging-format-interpolation
-    tf.logging.info('dice_per_case: {}, dice_global: {}'.format(
-        dice_per_case, dice_global))
+    tf.logging.info(f'dice_per_case: {dice_per_case}, dice_global: {dice_global}')
     # pylint: enable=logging-format-interpolation
 
   def _reshape_to_cubes(self, data):
@@ -539,11 +526,7 @@ def unet_with_spatial_partition(mesh, mesh_impl, dataset_str, images, labels):
   # add levels with convolution or down-sampling
   for depth in range(FLAGS.network_depth):
     for n_conv in range(FLAGS.n_conv_per_block):
-      if depth == 0 and n_conv == 0:
-        # no dropout in 1st layer.
-        dropout_keep_p = 1.0
-      else:
-        dropout_keep_p = FLAGS.dropout_keep_p
+      dropout_keep_p = 1.0 if depth == 0 and n_conv == 0 else FLAGS.dropout_keep_p
       x, bn_update_ops = conv_with_spatial_partition(
           x, FLAGS.sampled_2d_slices,
           image_nx_dim, image_ny_dim,

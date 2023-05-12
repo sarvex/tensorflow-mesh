@@ -55,8 +55,7 @@ class BalancedVariablePlacer(object):
       The device for placing the var.
     """
     if var.type not in ('Variable', 'VariableV2', 'VarHandleOp'):
-      tf.logging.debug('Place {} on last device: {}.'.format(
-          var.name, self._last_device))
+      tf.logging.debug(f'Place {var.name} on last device: {self._last_device}.')
       return self._last_device
 
     shape = tf.TensorShape(var.get_attr('shape'))
@@ -66,8 +65,8 @@ class BalancedVariablePlacer(object):
     mem, device = heapq.heappop(self._mem_device_heap)
     mem += shape.num_elements() * size
     heapq.heappush(self._mem_device_heap, (mem, device))
-    tf.logging.debug('Place variable {} on {} and consumes {} Bytes.'.format(
-        var.name, device, mem))
+    tf.logging.debug(
+        f'Place variable {var.name} on {device} and consumes {mem} Bytes.')
     self._last_device = device
 
     return device
@@ -97,9 +96,7 @@ def create_host_call(model_dir):
     assert tensor.shape.is_compatible_with([]), tensor.name
     if tensor.dtype == tf.int64:
       return tf.to_int32(tensor)
-    if tensor.dtype == tf.bfloat16:
-      return tf.cast(tensor, tf.float32)
-    return tensor
+    return tf.cast(tensor, tf.float32) if tensor.dtype == tf.bfloat16 else tensor
 
   reshaped_tensors = [tf.reshape(maybe_cast(t), [1]) for _, t in summaries]
 
@@ -138,8 +135,7 @@ def topology_rank(topology):
     topology = Topology(serialized=topology)
 
   if not isinstance(topology, Topology):
-    raise ValueError('`topology` is not a Topology object; got {}'.format(
-        type(topology)))
+    raise ValueError(f'`topology` is not a Topology object; got {type(topology)}')
 
   return len(topology.mesh_shape)
 
@@ -148,6 +144,6 @@ def remove_summaries():
   """Remove summaries from the default graph."""
   g = tf.get_default_graph()
   key = 'mtf_scalar_summaries'
-  tf.logging.debug('Remove summaries %s' % str(g.get_collection(key)))
+  tf.logging.debug(f'Remove summaries {str(g.get_collection(key))}')
   del g.get_collection_ref(key)[:]
   assert not g.get_collection(key)

@@ -89,9 +89,11 @@ def layout_and_mesh_shape(mtf_graph, num_machines, mtf_outputs=(),
   best_value = None
   for mesh_shape_list in _mesh_shape_iterator(num_machines,
                                               max_mesh_shape_dimensions):
-    mesh_shape = mtf.Shape([mtf.Dimension("mesh_{}".format(i), size)
-                            for i, size in enumerate(mesh_shape_list)])
-    tf.logging.info("Computing layout for mesh shape: {}".format(mesh_shape))
+    mesh_shape = mtf.Shape([
+        mtf.Dimension(f"mesh_{i}", size)
+        for i, size in enumerate(mesh_shape_list)
+    ])
+    tf.logging.info(f"Computing layout for mesh shape: {mesh_shape}")
     estimator = memory_estimator.MemoryEstimator(mtf_graph, mesh_shape,
                                                  mtf_outputs)
     optimizer = layout_optimizer.LayoutOptimizer(estimator)

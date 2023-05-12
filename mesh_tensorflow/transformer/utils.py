@@ -152,19 +152,13 @@ def separate_vocabularies(inputs=gin.REQUIRED, targets=gin.REQUIRED):
 @gin.configurable
 def init_checkpoint_variable_mapping(name, mapping_fn=None):
   """Maps from variable name in graph to variable name in checkpoint."""
-  if mapping_fn:
-    return mapping_fn(name)
-  else:
-    return name
+  return mapping_fn(name) if mapping_fn else name
 
 
 @gin.configurable
 def should_load_variable(name, filter_fn=None):
   """Determines whether a global variable should be loaded from a ckpt."""
-  if filter_fn:
-    return filter_fn(name)
-  else:
-    return True
+  return filter_fn(name) if filter_fn else True
 
 
 # TODO(katherinelee): Update layout_rules string when noam updates the
@@ -324,7 +318,7 @@ def _build_ckpt_to_local_var_name_mapping(
     if num_blocks is not None:
       base_regex = r"block_{:0=3d}/".format(block_num) + base_regex
     if regex_prefix is not None:
-      base_regex = regex_prefix + r".*" + base_regex
+      base_regex = f"{regex_prefix}.*{base_regex}"
     return base_regex
 
   all_ckpt_name_regexes = []
@@ -383,7 +377,7 @@ def _compute_num_blocks_and_layer(var_names):
   """Takes list of variable names and outputs the max number of blocks/layers."""
 
   encoder_decoder_model = any(
-      [re.match(r"^encoder/", var_name) for var_name in var_names])
+      re.match(r"^encoder/", var_name) for var_name in var_names)
 
   def get_max_layer_or_block_num(regex, var_names):
     matched_nums = [re.findall(regex, v) for v in var_names]
@@ -492,10 +486,7 @@ def flexible_ckpt_init_mapping(ckpt_path="", new_layers=None,
   def filter_fn(var_name):
     return var_name in graph_var_to_ckpt_var
 
-  if return_mapping_fn:
-    return mapping_fn
-  else:
-    return filter_fn
+  return mapping_fn if return_mapping_fn else filter_fn
 
 
 @gin.configurable(denylist=["predict_fn"])  # pass `predict_fn` through `run`

@@ -33,21 +33,20 @@ class NumpyConverter(object):
     if not dim_names:
       dim_names = [f"dim{i}" for i in range(len(dim_sizes))]
 
-    dims = []
-    for dim_size, dim_name in zip(dim_sizes, dim_names):
-      dims.append(mtf.Dimension(dim_name, dim_size))
+    dims = [
+        mtf.Dimension(dim_name, dim_size)
+        for dim_size, dim_name in zip(dim_sizes, dim_names)
+    ]
     shape = mtf.Shape(dims)
-    x_mtf = mtf.constant(self.mesh, x, shape=shape, dtype=dtype)
-    return x_mtf
+    return mtf.constant(self.mesh, x, shape=shape, dtype=dtype)
 
   def convert_mtf_tensor_to_np_array(self, x_mtf):
     """Convert an mtf.Tensor to a numpy array."""
     _, x_tf = self.convert_mtf_tensor_to_tf_tensor(x_mtf)
     if tf.executing_eagerly():
       return x_tf.numpy()
-    else:
-      self.session.run(tf.global_variables_initializer())
-      return x_tf.eval(session=self.session)
+    self.session.run(tf.global_variables_initializer())
+    return x_tf.eval(session=self.session)
 
   def convert_mtf_tensor_to_tf_tensor(self, mtf_tensor):
     """Convert an mtf.Tensor to a tf.Tensor."""

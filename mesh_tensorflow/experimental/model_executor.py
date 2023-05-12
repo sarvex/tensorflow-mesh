@@ -104,12 +104,9 @@ class _CkptLoaderHook(tf_estimator.SessionRunHook):
   """Load checkpoint right after the session started."""
 
   def after_create_session(self, session, coord):
-    # pylint: disable=protected-access
-    saver_collection = tf.get_collection(tf.GraphKeys.SAVERS)
-    if saver_collection:
+    if saver_collection := tf.get_collection(tf.GraphKeys.SAVERS):
       saver = saver_collection[0]
-      check_point = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
-      if check_point:
+      if check_point := tf.train.latest_checkpoint(FLAGS.checkpoint_dir):
         saver.restore(session, check_point)
 
 
@@ -170,14 +167,13 @@ class MeshContext(object):
       mesh = mtf.Mesh(graph, 'my_mesh', var_placer)
       mesh_impl = mtf.simd_mesh_impl.SimdMeshImpl(
           self._mesh_shape, self._layout_rules, None, self._d_assignment)
-      return graph, mesh, mesh_impl
-
     else:
       graph = mtf.Graph()
       mesh = mtf.Mesh(graph, 'my_mesh', None)
       mesh_impl = mtf.placement_mesh_impl.PlacementMeshImpl(
           self._mesh_shape, self._layout_rules, self._gpu_devices)
-      return graph, mesh, mesh_impl
+
+    return graph, mesh, mesh_impl
 
   @property
   def device_assignment(self):
@@ -210,7 +206,7 @@ class MeshContext(object):
       parsed = []
       for d in devices:
         m = re.match('/job:(.*)/replica:(.*)/task:(.*)/.*', d)
-        parsed.append((m.group(1), int(m.group(2)), int(m.group(3)), d))
+        parsed.append((m[1], int(m[2]), int(m[3]), d))
       return [_[3] for _ in sorted(parsed)]
 
     all_devices = sess.list_devices()
@@ -375,8 +371,8 @@ def _print_variable_values(sess):
   tf.logging.info('===================')
   values = sess.run(tf.trainable_variables())
   for variable, value in zip(tf.trainable_variables(), values):
-    tf.logging.info('{}, {}'.format(variable.name, value.shape))
-    tf.logging.info('{}'.format(np.array(value).flatten()))
+    tf.logging.info(f'{variable.name}, {value.shape}')
+    tf.logging.info(f'{np.array(value).flatten()}')
 
 
 def _train_phase(mesh_context, config, master):
@@ -559,12 +555,11 @@ def train_and_eval():
   """
 
   mesh_context = None
-  tf.logging.info('FLAGS.master: {}'.format(FLAGS.master))
+  tf.logging.info(f'FLAGS.master: {FLAGS.master}')
   resolver = tf.distribute.cluster_resolver.TPUClusterResolver(FLAGS.master)
   config = tf.ConfigProto()
   config.allow_soft_placement = True
-  cluster_spec = resolver.cluster_spec()
-  if cluster_spec:
+  if cluster_spec := resolver.cluster_spec():
     config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
   with tf.Session(target=resolver.master(), config=config) as sess:
     tf.tpu.experimental.initialize_tpu_system(resolver)

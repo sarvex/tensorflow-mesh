@@ -284,7 +284,7 @@ class SelfAttention(transformer.TransformerLayer):
     else:
       memory_position = self.rename_length_to_memory_length(
           context.position, context)
-    if context.mode == "incremental" or context.mode == "first_part":
+    if context.mode in ["incremental", "first_part"]:
       context.record_new_states([kv] if self.shared_kv else [k, v])
     if self.shared_kv:
       k = kv
@@ -442,8 +442,7 @@ class SelfAttention(transformer.TransformerLayer):
           relative_position,
           bidirectional=bidirectional,
           num_buckets=buckets_dim.size)
-      if (self.relative_attention_type == "bias" or
-          self.relative_attention_type == "bias_shared"):
+      if self.relative_attention_type in ["bias", "bias_shared"]:
         bias_shape = context.model.ensemble_dims + heads_dims + [buckets_dim]
         values = None
         cache = self.relative_attention_type == "bias_shared"
@@ -686,11 +685,7 @@ class Synthesizer(SelfAttention):
     else:
       k = params.compute_k(m)
       v = params.compute_v(m)
-    if self.no_query:
-      # we don't use q for some synthesizer modes that don't use QKV at all.
-      q = x
-    else:
-      q = params.compute_q(x)
+    q = x if self.no_query else params.compute_q(x)
     if self.shared_kv:
       k = kv
       v = kv
@@ -705,7 +700,7 @@ class Synthesizer(SelfAttention):
     else:
       memory_position = self.rename_length_to_memory_length(
           context.position, context)
-    if context.mode == "incremental" or context.mode == "first_part":
+    if context.mode in ["incremental", "first_part"]:
       context.record_new_states([k, v])
 
     o = attention.synthetic_attention(q, k, v, memory_length,
@@ -814,8 +809,7 @@ def enc_dec_attention_bias(layer,
     visible = mtf.equal(context.sequence_id, context.encoder_sequence_id)
     biases.append(attention.visibility_mask_to_attention_bias(
         visible, context.activation_dtype))
-  if (layer.relative_attention_type == "bias" or
-      layer.relative_attention_type == "bias_shared"):
+  if layer.relative_attention_type in ["bias", "bias_shared"]:
     buckets_dim = mtf.Dimension(
         "buckets", layer.relative_attention_num_buckets)
     bias_shape = context.model.ensemble_dims + heads_dims + [buckets_dim]
@@ -1357,7 +1351,7 @@ class TalkingHeadsSelfAttention(SelfAttention):
     else:
       memory_position = self.rename_length_to_memory_length(
           context.position, context)
-    if context.mode == "incremental" or context.mode == "first_part":
+    if context.mode in ["incremental", "first_part"]:
       context.record_new_states([k, v])
     bias = self.compute_bias(context, memory_position, x,
                              self.softmax_heads_dims, q)
@@ -1554,7 +1548,7 @@ class GeneralBilinearSelfAttention(SelfAttention):
     else:
       memory_position = self.rename_length_to_memory_length(
           context.position, context)
-    if context.mode == "incremental" or context.mode == "first_part":
+    if context.mode in ["incremental", "first_part"]:
       context.record_new_states([m])
     bias = self.compute_bias(context, memory_position, x, self.heads_dims, q)
     return self.attention_internal(context, q, m, memory_length, bias)

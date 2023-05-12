@@ -49,8 +49,7 @@ class LayoutValidatorTest(tf.test.TestCase):
     self.valid_layouts = valid_layouts.LayoutValidator(graph, mesh_shape)
 
   def test_SplittableMtfDimensionNames(self):
-    self.assertEqual(self.valid_layouts.splittable_mtf_dimension_names,
-                     set(["a", "b"]))
+    self.assertEqual(self.valid_layouts.splittable_mtf_dimension_names, {"a", "b"})
 
   def test_MeshDimensionNameToSize(self):
     self.assertEqual(self.valid_layouts.mesh_dimension_name_to_size,

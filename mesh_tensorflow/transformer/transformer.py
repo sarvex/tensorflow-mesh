@@ -447,8 +447,8 @@ class LayerStack(TransformerLayer):
     y = self._call_sublayers(self._sublayers_per_layer, x, context)
     if y.shape != x.shape:
       raise ValueError(
-          "Layer %s returned misshaped output x=%s y=%s"
-          % (layer.__class__.__name__, x, y))
+          f"Layer {layer.__class__.__name__} returned misshaped output x={x} y={y}"
+      )
     return y
 
   @property
@@ -955,13 +955,12 @@ class Unitransformer(object):
     """
     if self._loss_denominator is not None:
       return float(self._loss_denominator)
-    else:
-      ret = float(targets.shape.size) * num_microbatches
-      if self.ensemble_dim:
-        # The ensembling should not decrease the gradient to each model
-        ret /= self.ensemble_dim.size
-      tf.logging.info("loss denominator: %d" % ret)
-      return float(ret)
+    ret = float(targets.shape.size) * num_microbatches
+    if self.ensemble_dim:
+      # The ensembling should not decrease the gradient to each model
+      ret /= self.ensemble_dim.size
+    tf.logging.info("loss denominator: %d" % ret)
+    return float(ret)
 
   def call_simple(self,
                   inputs,
@@ -1065,10 +1064,7 @@ class Unitransformer(object):
         num_microbatches=num_microbatches)
     with tf.variable_scope(self.name):
       logits = self._call_internal(context, inputs, targets)
-    if compute_loss:
-      loss = mtf.add_n(context.losses)
-    else:
-      loss = None
+    loss = mtf.add_n(context.losses) if compute_loss else None
     return logits, loss
 
   @gin.configurable(module="Unitransformer")
@@ -1492,8 +1488,8 @@ class Bitransformer(object):
     shared_params = {}
     if self.shared_embedding:
       with tf.variable_scope("shared"):
-        if not (self.encoder.model_dim == self.decoder.model_dim and
-                self.encoder.input_vocab_dim == self.decoder.input_vocab_dim):
+        if (self.encoder.model_dim != self.decoder.model_dim
+            or self.encoder.input_vocab_dim != self.decoder.input_vocab_dim):
           raise ValueError(
               "shared_embedding requires encoder and decoder to have identical"
               " d_model and vocabulary sizes")
@@ -1858,8 +1854,10 @@ class StudentTeacher(object):
       student_vars_to_restore = tf.get_collection(
           tf.GraphKeys.GLOBAL_VARIABLES, scope="student")
       # See what variables exist in the checkpoint
-      ckpt_vars = set([
-          name for name, _ in tf.train.list_variables(self.teacher_checkpoint)])
+      ckpt_vars = {
+          name
+          for name, _ in tf.train.list_variables(self.teacher_checkpoint)
+      }
       student_load_dict = {}
       # Loop over all student variables and see if any can be loaded from ckpt
       for var in student_vars_to_restore:
@@ -1867,12 +1865,12 @@ class StudentTeacher(object):
         if var_name in ckpt_vars:
           student_load_dict[var_name] = var
         else:
-          tf.logging.info("Student variable not found in ckpt: {}".format(
-              var_name))
+          tf.logging.info(f"Student variable not found in ckpt: {var_name}")
 
       loaded_vars = set(student_load_dict.keys())
-      tf.logging.info("Variables not restored from ckpt for student: {}".format(
-          ckpt_vars - loaded_vars))
+      tf.logging.info(
+          f"Variables not restored from ckpt for student: {ckpt_vars - loaded_vars}"
+      )
 
       tf.train.init_from_checkpoint(
           self.teacher_checkpoint, student_load_dict)

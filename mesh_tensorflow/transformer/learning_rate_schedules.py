@@ -78,7 +78,7 @@ def linear_decay(step,
     a tf.Scalar, the learning rate for the step.
   """
   decay_steps = steps_or_fraction
-  if steps_or_fraction <= 1:
+  if decay_steps <= 1:
     decay_steps *= total_train_steps
   step = tf.cast(step, tf.float32)
   return tf.minimum(1.0, (total_train_steps - step) / decay_steps)
@@ -104,7 +104,7 @@ def linear_warmup(step,
     a tf.Scalar, the learning rate for the step.
   """
   warmup_steps = steps_or_fraction
-  if steps_or_fraction <= 1:
+  if warmup_steps <= 1:
     warmup_steps *= total_train_steps
   step = tf.cast(step, tf.float32)
   return tf.minimum(1.0, step / warmup_steps)

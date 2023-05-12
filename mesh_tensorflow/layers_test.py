@@ -436,8 +436,8 @@ class LayersTest(parameterized.TestCase, tf.test.TestCase):
           (stride_h, stride_w))(inputs)
       expected_outputs = tf.reshape(
           expected_outputs,
-          [batch, depth, int(height / stride_h),
-           int(width / stride_w), channels])
+          [batch, depth, height // stride_h, width // stride_w, channels],
+      )
 
     elif pooling_method == "AVG_2D":
       mtf_outputs = mtf.layers.avg_pool2d(
@@ -447,8 +447,8 @@ class LayersTest(parameterized.TestCase, tf.test.TestCase):
           (stride_h, stride_w))(inputs)
       expected_outputs = tf.reshape(
           expected_outputs,
-          [batch, depth, int(height / stride_h),
-           int(width / stride_w), channels])
+          [batch, depth, height // stride_h, width // stride_w, channels],
+      )
 
     elif pooling_method == "MAX_3D":
       mtf_outputs = mtf.layers.max_pool3d(

@@ -48,7 +48,7 @@ class SchedulerTest(parameterized.TestCase, tf.test.TestCase):
     graph.set_tensor_final('Z2:0')
     schedule = list(scheduler.minimize_peak_memory(graph, scheduler_alg))
 
-    self.assertCountEqual(schedule[0:2], [0, 1])
+    self.assertCountEqual(schedule[:2], [0, 1])
     self.assertCountEqual(schedule[2:4], [2, 3])
 
   def testMinimizePeakMemoryList(self):

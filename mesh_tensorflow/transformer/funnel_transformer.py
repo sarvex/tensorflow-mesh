@@ -224,8 +224,8 @@ class FunnelTransformerLayerStack(transformer.TransformerLayer):
     # we use context.current_layer_input to check the shape consistency.
     if y.shape != context.current_layer_input.shape:
       raise ValueError(
-          "Layer %s returned misshaped output x=%s y=%s"
-          % (layer.__class__.__name__, x, y))
+          f"Layer {layer.__class__.__name__} returned misshaped output x={x} y={y}"
+      )
     return y
 
   @property

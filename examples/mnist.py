@@ -114,8 +114,8 @@ def mnist_model(image, labels, mesh):
 
 def model_fn(features, labels, mode, params):
   """The model_fn argument for creating an Estimator."""
-  tf.logging.info("features = %s labels = %s mode = %s params=%s" %
-                  (features, labels, mode, params))
+  tf.logging.info(
+      f"features = {features} labels = {labels} mode = {mode} params={params}")
   global_step = tf.train.get_global_step()
   graph = mtf.Graph()
   mesh = mtf.Mesh(graph, "my_mesh")

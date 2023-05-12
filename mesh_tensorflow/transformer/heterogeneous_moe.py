@@ -208,8 +208,8 @@ def transformer_moe_layer_v1(
   experts_dim = mtf.Dimension("experts", hparams.moe_num_experts)
 
   if hparams.moe_heterogeneous_mask_info is not None:
-    tf.logging.info("moe_heterogeneous_mask_info: {}".format(
-        hparams.moe_heterogeneous_mask_info))
+    tf.logging.info(
+        f"moe_heterogeneous_mask_info: {hparams.moe_heterogeneous_mask_info}")
     heterogeneous_mask = generate_heterogeneous_expert_masks(
         hparams.moe_heterogeneous_mask_info,
         hparams.moe_num_experts,
@@ -359,7 +359,7 @@ def transformer_moe_layer_v1(
         num_microbatches=num_microbatches,
         token_embeddings=token_embeddings)
   else:
-    raise ValueError("unknown hparams.moe_gating=%s" % hparams.moe_gating)
+    raise ValueError(f"unknown hparams.moe_gating={hparams.moe_gating}")
 
   expert_inputs = mtf.einsum([inputs, dispatch_tensor],
                              mtf.Shape([
@@ -388,7 +388,7 @@ def transformer_moe_layer_v1(
 
   # Pretend we have heterogeneous_mask with shape [moe_num_layers, num_experts]
   for layer_idx in range(hparams.moe_num_layers):
-    with tf.variable_scope("expert_layer_{}".format(layer_idx)):
+    with tf.variable_scope(f"expert_layer_{layer_idx}"):
       res_h = 0.0
       if layer_idx > 0:
         res_h = expert_inputs
@@ -477,9 +477,9 @@ def generate_heterogeneous_expert_masks(
     mask of shape [moe_num_layers, num_experts, hidden_size].
   """
   # Get max num layers
-  max_layers = max([m["layers"] for m in mask_info])
+  max_layers = max(m["layers"] for m in mask_info)
   # Get max width
-  max_width = max([m["width"] for m in mask_info])
+  max_width = max(m["width"] for m in mask_info)
   # Will be shape [max_width, max_layers, num_experts]
   expert_mask = np.zeros([max_width, max_layers, 0])
   for idx, mask_i in enumerate(mask_info):
@@ -494,9 +494,8 @@ def generate_heterogeneous_expert_masks(
       num_experts_in_mask_tmp = num_experts - expert_mask.shape[2]
       if num_experts_in_mask_tmp != num_experts_in_mask:
         tf.logging.info(
-            "Expert layer probabilities do not evenly divide "
-            "the number of experts: {} {}".format(
-                num_experts_in_mask, num_experts_in_mask_tmp))
+            f"Expert layer probabilities do not evenly divide the number of experts: {num_experts_in_mask} {num_experts_in_mask_tmp}"
+        )
         num_experts_in_mask = num_experts_in_mask_tmp
     mask = np.zeros([int(max_width), int(max_layers),
                      num_experts_in_mask])
@@ -504,13 +503,14 @@ def generate_heterogeneous_expert_masks(
     mask[:(mask_i["width"]*expert_width), :mask_i["layers"], :] = 1
     expert_mask = np.concatenate([expert_mask, mask], axis=2)  # expert dim
   assert expert_mask.shape[2] == num_experts
-  tf.logging.info("heterogeneous mask: {}".format(expert_mask))
+  tf.logging.info(f"heterogeneous mask: {expert_mask}")
 
   # Now import the numpy mask into Mesh TF.
   layers_dim = mtf.Dimension("num_expert_layers", max_layers)
   width_dim = mtf.Dimension("expert_hidden", max_width)
   expert_mask_tf = tf.convert_to_tensor(expert_mask)
-  expert_mask_mtf = mtf.import_tf_tensor(
-      mesh, tf_tensor=expert_mask_tf,
-      shape=[width_dim, layers_dim, experts_dim])
-  return expert_mask_mtf
+  return mtf.import_tf_tensor(
+      mesh,
+      tf_tensor=expert_mask_tf,
+      shape=[width_dim, layers_dim, experts_dim],
+  )

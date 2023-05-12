@@ -65,7 +65,7 @@ def get_dummy_decoder_context(converter,
     inputs = converter.convert_np_array_to_mtf_tensor(
         inputs, dim_names=["batch", "length"])
 
-  context = transformer.Context(
+  return transformer.Context(
       model=model,
       mode=mode,
       states=states,
@@ -76,8 +76,8 @@ def get_dummy_decoder_context(converter,
       variable_dtype=mtf.VariableDType(tf.float32),
       sequence_id=1,
       inputs=inputs,
-      initial_position=initial_position)
-  return context
+      initial_position=initial_position,
+  )
 
 
 class TransformerLayersTest(tf.test.TestCase):
